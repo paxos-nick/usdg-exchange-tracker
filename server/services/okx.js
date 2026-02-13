@@ -122,9 +122,26 @@ async function getPerPairVolume() {
   };
 }
 
+async function getOrderbook(symbol) {
+  const response = await axios.get(`${BASE_URL}/market/books`, {
+    params: { instId: symbol, sz: 400 }
+  });
+
+  if (response.data.code !== '0') {
+    throw new Error(`OKX API error: ${response.data.msg}`);
+  }
+
+  const data = response.data.data[0];
+  return {
+    bids: (data.bids || []).map(b => [parseFloat(b[0]), parseFloat(b[1])]),
+    asks: (data.asks || []).map(a => [parseFloat(a[0]), parseFloat(a[1])])
+  };
+}
+
 module.exports = {
   getUSDGPairs,
   getDailyVolume,
   getAggregatedVolume,
-  getPerPairVolume
+  getPerPairVolume,
+  getOrderbook
 };

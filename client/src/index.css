@@ -73,6 +73,24 @@ body {
   color: #00d4aa;
 }
 
+.metrics-subheader {
+  font-size: 14px;
+  color: #71767b;
+  margin-top: 24px;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.threshold-stats {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.threshold-card .stat-value {
+  font-size: 32px;
+  color: #3b82f6;
+}
+
 .exchange-section {
   background: #1a1f2e;
   border-radius: 16px;
@@ -286,6 +304,14 @@ body {
   border-left: 3px solid #00d4aa;
 }
 
+.chart-footnote {
+  font-size: 11px;
+  color: #71767b;
+  font-style: italic;
+  margin-top: 8px;
+  text-align: right;
+}
+
 /* Multiple sections spacing */
 .exchange-section {
   margin-bottom: 24px;
@@ -303,3 +329,250 @@ body {
   border-radius: 12px;
   border: 1px solid #2f3542;
 }
+
+/* Tab Navigation */
+.tab-navigation {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+  background: #1a1f2e;
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid #2f3542;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 12px 24px;
+  background: transparent;
+  border: none;
+  color: #71767b;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tab-btn:hover {
+  color: #e7e9ea;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tab-btn.active {
+  background: #00d4aa;
+  color: #0f1419;
+  font-weight: 600;
+}
+
+/* Weekly Trends Page */
+.weekly-trends {
+  background: linear-gradient(135deg, #1a1f2e 0%, #1e2536 100%);
+  border-radius: 16px;
+  padding: 24px;
+  border: 1px solid #2f3542;
+}
+
+.weekly-trends h2 {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 24px;
+}
+
+.weekly-trends h3 {
+  font-size: 16px;
+  color: #71767b;
+  margin-bottom: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.weekly-trends h4 {
+  font-size: 14px;
+  color: #71767b;
+  margin-top: 20px;
+  margin-bottom: 12px;
+}
+
+.weekly-trends .no-data {
+  color: #71767b;
+  font-style: italic;
+  padding: 40px;
+  text-align: center;
+}
+
+/* Week-over-Week Section */
+.wow-section {
+  margin-bottom: 32px;
+}
+
+.comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.threshold-comparison {
+  margin-bottom: 0;
+}
+
+.comparison-card {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.comparison-label {
+  font-size: 12px;
+  color: #71767b;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+  font-weight: 500;
+}
+
+.comparison-values {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+}
+
+.comparison-current,
+.comparison-previous,
+.comparison-change {
+  text-align: center;
+}
+
+.value-label {
+  display: block;
+  font-size: 10px;
+  color: #71767b;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.value-number {
+  font-size: 16px;
+  font-weight: 600;
+  color: #e7e9ea;
+}
+
+.comparison-current .value-number {
+  color: #00d4aa;
+}
+
+.change-indicator {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.change-indicator.positive {
+  color: #10b981;
+}
+
+.change-indicator.negative {
+  color: #ef4444;
+}
+
+.change-neutral {
+  color: #71767b;
+  font-size: 14px;
+}
+
+/* Chart Sections in Weekly Trends */
+.chart-section {
+  margin-top: 32px;
+}
+
+.chart-section h3 {
+  margin-bottom: 16px;
+}
+
+/* Threshold Subheader */
+.threshold-subheader {
+  font-size: 13px !important;
+  margin-top: 16px !important;
+  margin-bottom: 10px !important;
+}
+
+/* Legend Styling for Recharts */
+.weekly-trends .recharts-legend-wrapper {
+  padding-top: 10px;
+}
+
+.weekly-trends .recharts-legend-item-text {
+  color: #e7e9ea !important;
+}
+
+/* Depth & Spread Table */
+.depth-spread-section {
+  background: linear-gradient(135deg, #1a1f2e 0%, #1e2536 100%);
+  border-radius: 16px;
+  padding: 24px;
+  border: 1px solid #2f3542;
+}
+
+.depth-spread-section h2 {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 24px;
+}
+
+.depth-table-group {
+  margin-bottom: 32px;
+}
+
+.depth-table-group h3 {
+  font-size: 14px;
+  color: #71767b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+
+.depth-table-wrapper {
+  overflow-x: auto;
+}
+
+.depth-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.depth-table th {
+  background: rgba(255, 255, 255, 0.05);
+  color: #71767b;
+  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  padding: 10px 12px;
+  text-align: right;
+  border-bottom: 1px solid #2f3542;
+  white-space: nowrap;
+}
+
+.depth-table th.col-left {
+  text-align: left;
+}
+
+.depth-table td {
+  padding: 10px 12px;
+  text-align: right;
+  border-bottom: 1px solid rgba(47, 53, 66, 0.5);
+  color: #e7e9ea;
+  white-space: nowrap;
+}
+
+.depth-table td.col-left {
+  text-align: left;
+  font-weight: 500;
+}
+
+.depth-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.spread-tight { color: #10b981; }
+.spread-moderate { color: #f59e0b; }
+.spread-wide { color: #ef4444; }

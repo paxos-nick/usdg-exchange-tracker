@@ -26,8 +26,14 @@ function formatTooltipValue(value) {
   return `$${formatVolume(value)}`;
 }
 
+// Parse date string without timezone issues
+function parseDate(dateStr) {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
 function formatDate(dateStr, timeRange) {
-  const date = new Date(dateStr);
+  const date = parseDate(dateStr);
   if (timeRange === '1y') {
     return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
   }
@@ -71,11 +77,11 @@ function filterDatesByTimeRange(dates, timeRange) {
   switch (timeRange) {
     case '30d': {
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      return sortedDates.filter(d => new Date(d) >= thirtyDaysAgo);
+      return sortedDates.filter(d => parseDate(d) >= thirtyDaysAgo);
     }
     case '1y': {
       const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-      return sortedDates.filter(d => new Date(d) >= oneYearAgo);
+      return sortedDates.filter(d => parseDate(d) >= oneYearAgo);
     }
     default:
       return sortedDates.slice(-30);

@@ -171,9 +171,33 @@ async function getPerPairVolume() {
   };
 }
 
+async function getOrderbook(pairSymbol) {
+  const response = await axios.get(`${BASE_URL}/Depth`, {
+    params: { pair: pairSymbol, count: 500 }
+  });
+
+  if (response.data.error && response.data.error.length > 0) {
+    throw new Error(`Kraken API error: ${response.data.error.join(', ')}`);
+  }
+
+  const result = response.data.result;
+  const dataKey = Object.keys(result).find(k => k !== 'last');
+
+  if (!dataKey) {
+    return { bids: [], asks: [] };
+  }
+
+  const raw = result[dataKey];
+  return {
+    bids: raw.bids.map(b => [parseFloat(b[0]), parseFloat(b[1])]),
+    asks: raw.asks.map(a => [parseFloat(a[0]), parseFloat(a[1])])
+  };
+}
+
 module.exports = {
   getUSDGPairs,
   getDailyVolume,
   getAggregatedVolume,
-  getPerPairVolume
+  getPerPairVolume,
+  getOrderbook
 };

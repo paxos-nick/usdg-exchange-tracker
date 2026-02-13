@@ -118,9 +118,21 @@ async function getPerPairVolume() {
   };
 }
 
+async function getOrderbook(pair) {
+  const response = await axios.get(`${BASE_URL}/spot/order_book`, {
+    params: { currency_pair: pair, limit: 100 }
+  });
+
+  return {
+    bids: (response.data.bids || []).map(b => [parseFloat(b[0]), parseFloat(b[1])]),
+    asks: (response.data.asks || []).map(a => [parseFloat(a[0]), parseFloat(a[1])])
+  };
+}
+
 module.exports = {
   getUSDGPairs,
   getDailyVolume,
   getAggregatedVolume,
-  getPerPairVolume
+  getPerPairVolume,
+  getOrderbook
 };

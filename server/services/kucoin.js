@@ -145,9 +145,26 @@ async function getPerPairVolume() {
   };
 }
 
+async function getOrderbook(symbol) {
+  const response = await axios.get(`${BASE_URL}/market/orderbook/level2_100`, {
+    params: { symbol: symbol }
+  });
+
+  if (response.data.code !== '200000') {
+    throw new Error(`Kucoin API error: ${response.data.msg}`);
+  }
+
+  const data = response.data.data;
+  return {
+    bids: (data.bids || []).map(b => [parseFloat(b[0]), parseFloat(b[1])]),
+    asks: (data.asks || []).map(a => [parseFloat(a[0]), parseFloat(a[1])])
+  };
+}
+
 module.exports = {
   getUSDGPairs,
   getDailyVolume,
   getAggregatedVolume,
-  getPerPairVolume
+  getPerPairVolume,
+  getOrderbook
 };

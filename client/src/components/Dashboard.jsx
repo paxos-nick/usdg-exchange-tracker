@@ -41,6 +41,24 @@ export default function Dashboard() {
   const last7Days = data?.dailyVolume?.slice(-7) || [];
   const last7DaysVolume = last7Days.reduce((sum, d) => sum + d.volume, 0);
 
+  // Calculate 30-day average volume per exchange
+  const last30Days = data?.dailyVolume?.slice(-30) || [];
+  const exchangeAvgVolumes = {};
+
+  if (data?.exchanges && last30Days.length > 0) {
+    for (const exchange of data.exchanges) {
+      const totalVolume = last30Days.reduce((sum, day) => {
+        return sum + (day.byExchange?.[exchange] || 0);
+      }, 0);
+      exchangeAvgVolumes[exchange] = totalVolume / 30;
+    }
+  }
+
+  // Count exchanges by volume threshold (exclusive buckets)
+  const exchanges1Mto5M = Object.values(exchangeAvgVolumes).filter(avg => avg >= 1_000_000 && avg < 5_000_000).length;
+  const exchanges5Mto25M = Object.values(exchangeAvgVolumes).filter(avg => avg >= 5_000_000 && avg < 25_000_000).length;
+  const exchangesOver25M = Object.values(exchangeAvgVolumes).filter(avg => avg >= 25_000_000).length;
+
   return (
     <div className="dashboard">
       <h2>Aggregated USDG Trading Volume (All Exchanges)</h2>
@@ -64,6 +82,22 @@ export default function Dashboard() {
         <div className="stat-card">
           <div className="stat-label">Total USDG Pairs</div>
           <div className="stat-value">{totalPairs}</div>
+        </div>
+      </div>
+
+      <h3 className="metrics-subheader">30-Day Average Daily Volume by Exchange</h3>
+      <div className="stats-grid threshold-stats">
+        <div className="stat-card threshold-card">
+          <div className="stat-label">$1M-$5M/day</div>
+          <div className="stat-value">{exchanges1Mto5M}</div>
+        </div>
+        <div className="stat-card threshold-card">
+          <div className="stat-label">$5M-$25M/day</div>
+          <div className="stat-value">{exchanges5Mto25M}</div>
+        </div>
+        <div className="stat-card threshold-card">
+          <div className="stat-label">&gt;$25M/day</div>
+          <div className="stat-value">{exchangesOver25M}</div>
         </div>
       </div>
     </div>

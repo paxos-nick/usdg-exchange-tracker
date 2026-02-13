@@ -21,9 +21,9 @@ const services = {
   okx: okxService
 };
 
-// Simple in-memory cache with 5-minute TTL
+// Simple in-memory cache with 6-hour TTL
 const cache = new Map();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL = 6 * 60 * 60 * 1000; // 6 hours
 
 function getCached(key) {
   const entry = cache.get(key);

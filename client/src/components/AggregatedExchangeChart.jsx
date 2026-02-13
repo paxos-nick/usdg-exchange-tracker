@@ -43,9 +43,17 @@ function formatTooltipValue(value) {
 }
 
 function formatDate(dateStr, timeRange) {
-  const date = new Date(dateStr);
+  // Parse date parts directly to avoid timezone issues
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const date = new Date(year, month - 1, day); // month is 0-indexed
   if (timeRange === '1y') {
-    return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+    const label = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+    // Add asterisk for current (incomplete) month
+    const now = new Date();
+    if (year === now.getFullYear() && month === now.getMonth() + 1) {
+      return `${label}*`;
+    }
+    return label;
   }
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
@@ -69,6 +77,12 @@ function aggregateToMonthly(data, selectedExchanges) {
   return Array.from(monthlyMap.values()).sort((a, b) => a.date.localeCompare(b.date));
 }
 
+// Parse date string without timezone issues
+function parseDate(dateStr) {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
 function filterDataByTimeRange(data, timeRange, selectedExchanges) {
   if (!data || data.length === 0) return [];
 
@@ -78,12 +92,12 @@ function filterDataByTimeRange(data, timeRange, selectedExchanges) {
   switch (timeRange) {
     case '30d': {
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      filtered = data.filter(d => new Date(d.date) >= thirtyDaysAgo);
+      filtered = data.filter(d => parseDate(d.date) >= thirtyDaysAgo);
       break;
     }
     case '1y': {
       const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-      filtered = data.filter(d => new Date(d.date) >= oneYearAgo);
+      filtered = data.filter(d => parseDate(d.date) >= oneYearAgo);
       return aggregateToMonthly(filtered, selectedExchanges);
     }
     default:
@@ -225,6 +239,12 @@ export default function AggregatedExchangeChart() {
               ))}
             </BarChart>
           </ResponsiveContainer>
+        </div>
+      )}
+
+      {timeRange === '1y' && (
+        <div className="chart-footnote">
+          *Month in progress (as of {new Date().toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' })})
         </div>
       )}
 

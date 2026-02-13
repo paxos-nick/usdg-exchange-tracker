@@ -7,6 +7,9 @@ import VolumeChart from './components/VolumeChart';
 import PairSelector from './components/PairSelector';
 import PairVolumeChart from './components/PairVolumeChart';
 import TimeRangeSelector from './components/TimeRangeSelector';
+import WeeklyTrends from './components/WeeklyTrends';
+import MonthlyTrends from './components/MonthlyTrends';
+import DepthSpreadTable from './components/DepthSpreadTable';
 import { useVolumeData, usePairVolumeData } from './hooks/useVolumeData';
 
 const EXCHANGE_NAMES = {
@@ -27,6 +30,7 @@ function formatTime(date) {
 }
 
 export default function App() {
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedExchange, setSelectedExchange] = useState('kraken');
   const [exchangeTimeRange, setExchangeTimeRange] = useState('30d');
   const [pairExchange, setPairExchange] = useState('kraken');
@@ -57,7 +61,43 @@ export default function App() {
         <p>Track USDG stablecoin trading volume across exchanges</p>
       </header>
 
-      <Dashboard />
+      {/* Tab Navigation */}
+      <nav className="tab-navigation">
+        <button
+          className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
+          onClick={() => setActiveTab('dashboard')}
+        >
+          Dashboard
+        </button>
+        <button
+          className={`tab-btn ${activeTab === 'weekly' ? 'active' : ''}`}
+          onClick={() => setActiveTab('weekly')}
+        >
+          Weekly Trends
+        </button>
+        <button
+          className={`tab-btn ${activeTab === 'monthly' ? 'active' : ''}`}
+          onClick={() => setActiveTab('monthly')}
+        >
+          Monthly Trends
+        </button>
+        <button
+          className={`tab-btn ${activeTab === 'depth' ? 'active' : ''}`}
+          onClick={() => setActiveTab('depth')}
+        >
+          Depth & Spread
+        </button>
+      </nav>
+
+      {activeTab === 'weekly' ? (
+        <WeeklyTrends />
+      ) : activeTab === 'monthly' ? (
+        <MonthlyTrends />
+      ) : activeTab === 'depth' ? (
+        <DepthSpreadTable />
+      ) : (
+        <>
+          <Dashboard />
 
       {/* All Exchanges Stacked Chart */}
       <AggregatedExchangeChart />
@@ -100,7 +140,7 @@ export default function App() {
 
             {lastUpdated && (
               <div className="refresh-info">
-                Last updated: {formatTime(lastUpdated)} (auto-refreshes every 5 min)
+                Last updated: {formatTime(lastUpdated)} (auto-refreshes every 6 hours)
               </div>
             )}
           </>
@@ -147,6 +187,8 @@ export default function App() {
           </>
         )}
       </section>
+        </>
+      )}
     </div>
   );
 }

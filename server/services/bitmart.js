@@ -129,9 +129,26 @@ async function getPerPairVolume() {
   };
 }
 
+async function getOrderbook(symbol) {
+  const response = await axios.get(`${BASE_URL}/spot/quotation/v3/books`, {
+    params: { symbol: symbol, limit: 50 }
+  });
+
+  if (response.data.code !== 1000) {
+    throw new Error(`Bitmart API error: ${response.data.message}`);
+  }
+
+  const data = response.data.data;
+  return {
+    bids: (data.bids || []).map(b => [parseFloat(b[0]), parseFloat(b[1])]),
+    asks: (data.asks || []).map(a => [parseFloat(a[0]), parseFloat(a[1])])
+  };
+}
+
 module.exports = {
   getUSDGPairs,
   getDailyVolume,
   getAggregatedVolume,
-  getPerPairVolume
+  getPerPairVolume,
+  getOrderbook
 };
