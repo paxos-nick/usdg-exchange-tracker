@@ -7,7 +7,8 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend
+  Legend,
+  LabelList
 } from 'recharts';
 import TimeRangeSelector from './TimeRangeSelector';
 import { useAggregatedData } from '../hooks/useVolumeData';
@@ -166,10 +167,14 @@ export default function AggregatedExchangeChart() {
   }
 
   const chartData = filterDataByTimeRange(data?.dailyVolume || [], timeRange, selectedExchanges);
-  const formattedData = chartData.map(d => ({
-    ...d,
-    displayDate: formatDate(d.date, timeRange)
-  }));
+  const formattedData = chartData.map(d => {
+    const total = selectedExchanges.reduce((sum, ex) => sum + (d[ex] || 0), 0);
+    return {
+      ...d,
+      displayDate: formatDate(d.date, timeRange),
+      _total: total
+    };
+  });
 
   // Sort exchanges by total volume (descending) so largest is at bottom of stack
   const sortedExchanges = [...selectedExchanges].sort((a, b) => {
@@ -196,7 +201,7 @@ export default function AggregatedExchangeChart() {
       ) : (
         <div className="chart-container">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={formattedData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+            <BarChart data={formattedData} margin={{ top: 30, right: 30, left: 20, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#2f3542" />
               <XAxis
                 dataKey="displayDate"
@@ -220,7 +225,12 @@ export default function AggregatedExchangeChart() {
                 }}
                 labelStyle={{ color: '#71767b' }}
                 formatter={formatTooltipValue}
-                labelFormatter={(label) => `Date: ${label}`}
+                labelFormatter={(label, payload) => {
+                  const total = payload?.[0]?.payload?._total;
+                  return total != null
+                    ? `Date: ${label}  —  Total: $${formatVolume(total)}`
+                    : `Date: ${label}`;
+                }}
               />
               <Legend
                 wrapperStyle={{ color: '#e7e9ea' }}
@@ -235,7 +245,16 @@ export default function AggregatedExchangeChart() {
                   fill={EXCHANGE_COLORS[exchange] || '#888'}
                   radius={index === sortedExchanges.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
                   name={exchange}
-                />
+                >
+                  {index === sortedExchanges.length - 1 && (
+                    <LabelList
+                      dataKey="_total"
+                      position="top"
+                      formatter={(val) => `$${formatVolume(val)}`}
+                      style={{ fill: '#a0a4aa', fontSize: 10, fontWeight: 500 }}
+                    />
+                  )}
+                </Bar>
               ))}
             </BarChart>
           </ResponsiveContainer>
