@@ -16,14 +16,14 @@ async function getUSDGPairs() {
 
 async function getDailyVolume(pair) {
   // step=1440 is daily (1440 minutes)
-  // Get data going back ~1 year
-  const after = Math.floor((Date.now() - 365 * 24 * 60 * 60 * 1000) / 1000);
+  // Use 'before' to get the most recent 200 daily candles ending at now
+  const before = Math.floor(Date.now() / 1000);
 
   const response = await axios.get(`${BASE_URL}/spot/quotation/v3/klines`, {
     params: {
       symbol: pair,
       step: 1440,
-      after: after,
+      before: before,
       limit: 200
     }
   });

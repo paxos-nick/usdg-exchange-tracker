@@ -10,6 +10,10 @@ import TimeRangeSelector from './components/TimeRangeSelector';
 import WeeklyTrends from './components/WeeklyTrends';
 import MonthlyTrends from './components/MonthlyTrends';
 import DepthSpreadTable from './components/DepthSpreadTable';
+import DefiPoolsTable from './components/DefiPoolsTable';
+import VaultsLendingTable from './components/VaultsLendingTable';
+import OverallVolumeChart from './components/OverallVolumeChart';
+import TotalDefiTab from './components/TotalDefiTab';
 import { useVolumeData, usePairVolumeData } from './hooks/useVolumeData';
 
 const EXCHANGE_NAMES = {
@@ -30,7 +34,7 @@ function formatTime(date) {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState('overall');
   const [selectedExchange, setSelectedExchange] = useState('kraken');
   const [exchangeTimeRange, setExchangeTimeRange] = useState('30d');
   const [pairExchange, setPairExchange] = useState('kraken');
@@ -64,10 +68,16 @@ export default function App() {
       {/* Tab Navigation */}
       <nav className="tab-navigation">
         <button
+          className={`tab-btn ${activeTab === 'overall' ? 'active' : ''}`}
+          onClick={() => setActiveTab('overall')}
+        >
+          Total USDG Activity
+        </button>
+        <button
           className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
           onClick={() => setActiveTab('dashboard')}
         >
-          Dashboard
+          CEX Dashboard
         </button>
         <button
           className={`tab-btn ${activeTab === 'weekly' ? 'active' : ''}`}
@@ -87,6 +97,24 @@ export default function App() {
         >
           Depth & Spread
         </button>
+        <button
+          className={`tab-btn ${activeTab === 'totaldefi' ? 'active' : ''}`}
+          onClick={() => setActiveTab('totaldefi')}
+        >
+          Total DeFi
+        </button>
+        <button
+          className={`tab-btn ${activeTab === 'dex' ? 'active' : ''}`}
+          onClick={() => setActiveTab('dex')}
+        >
+          DEX Dashboard
+        </button>
+        <button
+          className={`tab-btn ${activeTab === 'vaults' ? 'active' : ''}`}
+          onClick={() => setActiveTab('vaults')}
+        >
+          Vaults & Lending
+        </button>
       </nav>
 
       {activeTab === 'weekly' ? (
@@ -95,6 +123,14 @@ export default function App() {
         <MonthlyTrends />
       ) : activeTab === 'depth' ? (
         <DepthSpreadTable />
+      ) : activeTab === 'overall' ? (
+        <OverallVolumeChart />
+      ) : activeTab === 'totaldefi' ? (
+        <TotalDefiTab />
+      ) : activeTab === 'dex' ? (
+        <DefiPoolsTable />
+      ) : activeTab === 'vaults' ? (
+        <VaultsLendingTable />
       ) : (
         <>
           <Dashboard />

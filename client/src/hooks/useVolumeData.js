@@ -251,3 +251,152 @@ export function useDepthData() {
 
   return { data, loading, error, lastUpdated, refetch: fetchData };
 }
+
+export function useDefiPools() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await fetch('/api/defi/pools');
+      if (!response.ok) throw new Error(`Failed to fetch DEX pool data: ${response.statusText}`);
+      const result = await response.json();
+      setData(result);
+      setLastUpdated(new Date());
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    const intervalId = setInterval(fetchData, DEPTH_REFRESH_INTERVAL);
+    return () => clearInterval(intervalId);
+  }, [fetchData]);
+
+  return { data, loading, error, lastUpdated, refetch: fetchData };
+}
+
+export function useDefiVaults() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await fetch('/api/defi/vaults');
+      if (!response.ok) throw new Error(`Failed to fetch vault data: ${response.statusText}`);
+      const result = await response.json();
+      setData(result);
+      setLastUpdated(new Date());
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    const intervalId = setInterval(fetchData, DEPTH_REFRESH_INTERVAL);
+    return () => clearInterval(intervalId);
+  }, [fetchData]);
+
+  return { data, loading, error, lastUpdated, refetch: fetchData };
+}
+
+export function useDefiLending() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await fetch('/api/defi/lending');
+      if (!response.ok) throw new Error(`Failed to fetch lending data: ${response.statusText}`);
+      const result = await response.json();
+      setData(result);
+      setLastUpdated(new Date());
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    const intervalId = setInterval(fetchData, DEPTH_REFRESH_INTERVAL);
+    return () => clearInterval(intervalId);
+  }, [fetchData]);
+
+  return { data, loading, error, lastUpdated, refetch: fetchData };
+}
+
+export function useDexHistory() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await fetch('/api/defi/pool-history');
+      if (!response.ok) throw new Error(`Failed to fetch DEX history: ${response.statusText}`);
+      const result = await response.json();
+      setData(result);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  return { data, loading, error, refetch: fetchData };
+}
+
+export function useTvlSummary() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await fetch('/api/defi/tvl-summary');
+      if (!response.ok) throw new Error(`Failed to fetch TVL summary: ${response.statusText}`);
+      const result = await response.json();
+      setData(result);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    const intervalId = setInterval(fetchData, DEPTH_REFRESH_INTERVAL);
+    return () => clearInterval(intervalId);
+  }, [fetchData]);
+
+  return { data, loading, error, refetch: fetchData };
+}
