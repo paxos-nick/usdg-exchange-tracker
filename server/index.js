@@ -27,8 +27,12 @@ app.get('/health', (req, res) => {
 });
 
 async function start() {
-  // Initialize database schema
-  await setupDatabase();
+  // Initialize database schema (non-fatal — CEX endpoints work without DB)
+  try {
+    await setupDatabase();
+  } catch (err) {
+    console.error('[DB] Database unavailable, DeFi snapshots disabled:', err.message);
+  }
 
   app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
