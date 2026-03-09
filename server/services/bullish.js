@@ -28,30 +28,10 @@ async function getUSDGPairs() {
   return usdgPairs;
 }
 
-async function getDailyVolume(symbol, startDate, endDate) {
-  // Format dates for the API
-  const start = startDate || new Date(Date.now() - 365 * 24 * 60 * 60 * 1000); // Default: 1 year ago
-  const end = endDate || new Date();
-
-  const startISO = start.toISOString();
-  const endISO = end.toISOString();
-
-  const response = await axios.get(`${BASE_URL}/markets/${symbol}/candle`, {
-    params: {
-      'createdAtDatetime[gte]': startISO,
-      'createdAtDatetime[lte]': endISO,
-      'timeBucket': '1d'
-    },
-    headers: { 'accept': 'application/json' }
-  });
-
-  const candles = response.data;
-
-  // Handle different response structures
+function parseCandles(candles) {
   const candleArray = Array.isArray(candles) ? candles : (candles.data || candles.candles || []);
 
   return candleArray.map(candle => {
-    // Bullish API returns createdAtDatetime (ISO string) and createdAtTimestamp (ms)
     const datetime = candle.createdAtDatetime || candle.datetime || candle.timestamp;
     const date = datetime ? datetime.split('T')[0] : null;
     const close = parseFloat(candle.close || 0);
@@ -65,9 +45,52 @@ async function getDailyVolume(symbol, startDate, endDate) {
       low: parseFloat(candle.low || 0),
       close: close,
       rawVolume: rawVolume,
-      volume: rawVolume // Will be converted to USD in aggregation functions
+      volume: rawVolume
     };
-  }).filter(c => c.date); // Filter out entries without valid dates
+  }).filter(c => c.date);
+}
+
+async function getDailyVolume(symbol, startDate, endDate) {
+  const start = startDate || new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
+  const end = endDate || new Date();
+
+  // Bullish API returns max 25 candles per request, so paginate
+  const PAGE_SIZE_DAYS = 24; // stay under 25 limit
+  const allCandles = [];
+  let windowStart = new Date(start);
+
+  while (windowStart < end) {
+    const windowEnd = new Date(Math.min(
+      windowStart.getTime() + PAGE_SIZE_DAYS * 24 * 60 * 60 * 1000,
+      end.getTime()
+    ));
+
+    try {
+      const response = await axios.get(`${BASE_URL}/markets/${symbol}/candle`, {
+        params: {
+          'createdAtDatetime[gte]': windowStart.toISOString(),
+          'createdAtDatetime[lte]': windowEnd.toISOString(),
+          'timeBucket': '1d'
+        },
+        headers: { 'accept': 'application/json' }
+      });
+
+      const parsed = parseCandles(response.data);
+      allCandles.push(...parsed);
+    } catch (err) {
+      console.error(`Error fetching Bullish candles for ${symbol} (${windowStart.toISOString().split('T')[0]}):`, err.message);
+    }
+
+    windowStart = new Date(windowEnd.getTime() + 1);
+    await delay(500);
+  }
+
+  // Deduplicate by date (in case of overlap)
+  const byDate = new Map();
+  for (const candle of allCandles) {
+    byDate.set(candle.date, candle);
+  }
+  return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
 }
 
 // Check if a pair needs volume conversion (base currency is not a stablecoin)

@@ -100,3 +100,6 @@
 {"timestamp":"2026-02-28T23:59:03.813Z","metrics":{"volume7Day":243194481.7493332,"volume30Day":652633329.0814266,"activeExchanges":5,"totalPairs":10,"exchangeThresholds":{"1Mto5M":2,"5Mto25M":2,"over25M":0}}}
 {"timestamp":"2026-03-01T23:59:03.833Z","metrics":{"volume7Day":255925274.07671374,"volume30Day":650863723.690801,"activeExchanges":5,"totalPairs":10,"exchangeThresholds":{"1Mto5M":2,"5Mto25M":2,"over25M":0}}}
 {"timestamp":"2026-03-03T23:59:03.741Z","metrics":{"volume7Day":275751759.9825471,"volume30Day":647201294.036465,"activeExchanges":6,"totalPairs":10,"exchangeThresholds":{"1Mto5M":2,"5Mto25M":2,"over25M":0}}}
+{"timestamp":"2026-03-04T23:59:05.904Z","metrics":{"volume7Day":222248036.1316504,"volume30Day":660082898.4231558,"activeExchanges":6,"totalPairs":10,"exchangeThresholds":{"1Mto5M":2,"5Mto25M":2,"over25M":0}}}
+{"timestamp":"2026-03-05T23:59:04.058Z","metrics":{"volume7Day":207023007.0919987,"volume30Day":676491462.0100576,"activeExchanges":6,"totalPairs":10,"exchangeThresholds":{"1Mto5M":2,"5Mto25M":2,"over25M":0}}}
+{"timestamp":"2026-03-06T23:59:31.196Z","metrics":{"volume7Day":211098593.52745056,"volume30Day":757391933.4273658,"activeExchanges":6,"totalPairs":10,"exchangeThresholds":{"1Mto5M":2,"5Mto25M":2,"over25M":0}}}
