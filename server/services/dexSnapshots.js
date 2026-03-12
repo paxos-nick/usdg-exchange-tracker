@@ -84,9 +84,9 @@ async function takeSnapshot() {
 }
 
 function startScheduler() {
-  // Snapshot daily at 00:05 UTC
-  cron.schedule('5 0 * * *', async () => {
-    console.log('[DexSnapshot] Running daily snapshot...');
+  // Attempt snapshot every hour — dedup logic in takeSnapshot prevents multiple writes per day
+  cron.schedule('5 * * * *', async () => {
+    console.log('[DexSnapshot] Running hourly snapshot check...');
     try {
       await takeSnapshot();
     } catch (err) {
@@ -103,7 +103,7 @@ function startScheduler() {
     }
   }, 5000);
 
-  console.log('[DexSnapshot] Scheduler started. Snapshots daily at 00:05 UTC');
+  console.log('[DexSnapshot] Scheduler started. Snapshot checks run hourly (once per day written).');
 }
 
 module.exports = { takeSnapshot, getHistory, loadSnapshots, startScheduler };
