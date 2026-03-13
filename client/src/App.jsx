@@ -10,6 +10,7 @@ import TimeRangeSelector from './components/TimeRangeSelector';
 import WeeklyTrends from './components/WeeklyTrends';
 import MonthlyTrends from './components/MonthlyTrends';
 import DepthSpreadTable from './components/DepthSpreadTable';
+import FuseBox from './components/FuseBox';
 import DefiPoolsTable from './components/DefiPoolsTable';
 import VaultsLendingTable from './components/VaultsLendingTable';
 import OverallVolumeChart from './components/OverallVolumeChart';
@@ -115,6 +116,12 @@ export default function App() {
         >
           Vaults & Lending
         </button>
+        <button
+          className={`tab-btn ${activeTab === 'fusebox' ? 'active' : ''}`}
+          onClick={() => setActiveTab('fusebox')}
+        >
+          Fuse Box
+        </button>
       </nav>
 
       {activeTab === 'weekly' ? (
@@ -131,6 +138,8 @@ export default function App() {
         <DefiPoolsTable />
       ) : activeTab === 'vaults' ? (
         <VaultsLendingTable />
+      ) : activeTab === 'fusebox' ? (
+        <FuseBox />
       ) : (
         <>
           <Dashboard />

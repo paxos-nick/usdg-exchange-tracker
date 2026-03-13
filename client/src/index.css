@@ -577,6 +577,40 @@ body {
 .spread-moderate { color: #f59e0b; }
 .spread-wide { color: #ef4444; }
 
+/* Order book layout: bid/ask column tints */
+.depth-table th.col-bid,
+.depth-table td.col-bid {
+  background: rgba(16, 185, 129, 0.05);
+  text-align: right;
+}
+
+.depth-table th.col-ask,
+.depth-table td.col-ask {
+  background: rgba(239, 68, 68, 0.05);
+  text-align: right;
+}
+
+/* Venue cell: holds freshness dot + name */
+.depth-table td.col-venue {
+  text-align: left;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* Freshness indicator dot */
+.freshness-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+.freshness-ok { background: #10b981; }
+.freshness-error { background: #ef4444; }
+.freshness-unknown { background: #71767b; }
+
 /* ====== DeFi Components ====== */
 
 .defi-pools-grid {
@@ -1160,4 +1194,98 @@ body {
   .chain-venues {
     grid-template-columns: 1fr;
   }
+}
+
+/* ====== Fuse Box ====== */
+
+.fuse-box-section {
+  padding: 24px;
+}
+
+.fuse-updated {
+  font-size: 12px;
+  color: #71767b;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.fuse-refresh-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid #2f3542;
+  color: #e7e9ea;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.fuse-refresh-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.fuse-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+  margin: 24px 0;
+}
+
+.fuse-card {
+  background: #1a1f2e;
+  border: 1px solid #2f3542;
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+.fuse-card-ok    { border-color: rgba(16, 185, 129, 0.3); }
+.fuse-card-error { border-color: rgba(239, 68, 68, 0.3); }
+.fuse-card-unknown { border-color: #2f3542; }
+
+.fuse-light {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2px;
+}
+.fuse-light-ok      { background: rgba(16, 185, 129, 0.2); }
+.fuse-light-error   { background: rgba(239, 68, 68, 0.2); }
+.fuse-light-unknown { background: rgba(113, 118, 123, 0.2); }
+
+.fuse-light-inner {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+.fuse-light-ok      .fuse-light-inner { background: #10b981; box-shadow: 0 0 6px #10b981; }
+.fuse-light-error   .fuse-light-inner { background: #ef4444; box-shadow: 0 0 6px #ef4444; }
+.fuse-light-unknown .fuse-light-inner { background: #71767b; }
+
+.fuse-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.fuse-card-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #e7e9ea;
+  margin-bottom: 4px;
+}
+
+.fuse-card-status {
+  font-size: 12px;
+  color: #71767b;
+}
+
+.fuse-card-error-msg {
+  font-size: 11px;
+  color: #ef4444;
+  margin-top: 6px;
+  word-break: break-word;
 }

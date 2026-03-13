@@ -21,7 +21,7 @@ function classifyPair(base, quote) {
  */
 function getBpsLevels(pairType) {
   if (pairType === 'stablecoin') {
-    return [2, 5, 10, 100];
+    return [1, 2, 5, 10, 100];
   }
   return [10, 25, 50, 100];
 }

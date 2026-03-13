@@ -372,6 +372,37 @@ export function useDexHistory() {
   return { data, loading, error, refetch: fetchData };
 }
 
+export function useHealthData() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await fetch('/api/depth/health');
+      if (!response.ok) throw new Error(`Failed to fetch health data: ${response.statusText}`);
+      const result = await response.json();
+      setData(result);
+      setLastUpdated(new Date());
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    const intervalId = setInterval(fetchData, 60 * 1000); // refresh every 60s
+    return () => clearInterval(intervalId);
+  }, [fetchData]);
+
+  return { data, loading, error, lastUpdated, refetch: fetchData };
+}
+
 export function useTvlSummary() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);

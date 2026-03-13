@@ -22,8 +22,23 @@ function spreadColorClass(spreadBps, pairType) {
   return 'spread-wide';
 }
 
+function FreshnessDot({ ok }) {
+  if (ok === null || ok === undefined) return <span className="freshness-dot freshness-unknown" title="No data yet" />;
+  return (
+    <span
+      className={`freshness-dot ${ok ? 'freshness-ok' : 'freshness-error'}`}
+      title={ok ? 'Live' : 'Stale or error'}
+    />
+  );
+}
+
 function DepthTable({ rows, bpsLevels, title }) {
   if (rows.length === 0) return null;
+
+  // Bid columns: widest first (left), tightest last (adjacent to spread center)
+  const bidLevels = [...bpsLevels].reverse();
+  // Ask columns: tightest first (adjacent to spread center), widest last (right)
+  const askLevels = [...bpsLevels];
 
   return (
     <div className="depth-table-group">
@@ -34,28 +49,35 @@ function DepthTable({ rows, bpsLevels, title }) {
             <tr>
               <th className="col-left">Venue</th>
               <th className="col-left">Pair</th>
-              <th>Spread</th>
-              {bpsLevels.map(bps => (
-                <th key={`bid-${bps}`}>Bid @{bps}bps</th>
+              {bidLevels.map(bps => (
+                <th key={`bid-${bps}`} className="col-bid">Bid @{bps}bps</th>
               ))}
-              {bpsLevels.map(bps => (
-                <th key={`ask-${bps}`}>Ask @{bps}bps</th>
+              <th>Spread</th>
+              {askLevels.map(bps => (
+                <th key={`ask-${bps}`} className="col-ask">Ask @{bps}bps</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
               <tr key={`${row.exchange}-${row.pair}`}>
-                <td className="col-left">{row.exchangeDisplay}</td>
+                <td className="col-venue">
+                  <FreshnessDot ok={row.ok} />
+                  {row.exchangeDisplay}
+                </td>
                 <td className="col-left">{row.pair}</td>
+                {bidLevels.map(bps => (
+                  <td key={`bid-${bps}`} className="col-bid">
+                    {row.bidDepth[bps] != null ? formatUSD(row.bidDepth[bps]) : '—'}
+                  </td>
+                ))}
                 <td className={spreadColorClass(row.spreadBps, row.pairType)}>
                   {row.spreadBps.toFixed(1)} bps
                 </td>
-                {bpsLevels.map(bps => (
-                  <td key={`bid-${bps}`}>{formatUSD(row.bidDepth[bps])}</td>
-                ))}
-                {bpsLevels.map(bps => (
-                  <td key={`ask-${bps}`}>{formatUSD(row.askDepth[bps])}</td>
+                {askLevels.map(bps => (
+                  <td key={`ask-${bps}`} className="col-ask">
+                    {row.askDepth[bps] != null ? formatUSD(row.askDepth[bps]) : '—'}
+                  </td>
                 ))}
               </tr>
             ))}
@@ -105,7 +127,7 @@ export default function DepthSpreadTable() {
 
       <DepthTable
         rows={stablecoinRows}
-        bpsLevels={[2, 5, 10, 100]}
+        bpsLevels={[1, 2, 5, 10, 100]}
         title="Stablecoin Pairs"
       />
 

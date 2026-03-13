@@ -54,6 +54,13 @@ function setCache(key, data) {
   cache.set(key, { data, timestamp: Date.now() });
 }
 
+// Per-exchange health tracking
+// { [exchange]: { lastSuccess: Date|null, lastAttempt: Date|null, lastError: string|null, ok: bool } }
+const exchangeHealth = {};
+for (const ex of EXCHANGES) {
+  exchangeHealth[ex] = { lastSuccess: null, lastAttempt: null, lastError: null, ok: null };
+}
+
 /**
  * Extract base/quote from pair data based on exchange format
  */
@@ -95,9 +102,12 @@ router.get('/', async (req, res) => {
     const exchangePromises = EXCHANGES.map(async (exchangeName) => {
       const service = services[exchangeName];
       const exchangeResults = [];
+      const attemptTime = new Date();
+      exchangeHealth[exchangeName].lastAttempt = attemptTime;
 
       try {
         const pairs = await service.getUSDGPairs();
+        const fetchedAt = new Date().toISOString();
 
         for (const pair of pairs) {
           try {
@@ -123,7 +133,9 @@ router.get('/', async (req, res) => {
               spreadBps: metrics.spreadBps,
               bpsLevels,
               bidDepth: metrics.bidDepth,
-              askDepth: metrics.askDepth
+              askDepth: metrics.askDepth,
+              fetchedAt,
+              ok: true
             });
 
             // Rate limit between pair requests within same exchange
@@ -134,8 +146,14 @@ router.get('/', async (req, res) => {
             console.error(`[Depth] Error fetching orderbook for ${exchangeName}/${pair.symbol}:`, err.message);
           }
         }
+
+        exchangeHealth[exchangeName].lastSuccess = attemptTime;
+        exchangeHealth[exchangeName].lastError = null;
+        exchangeHealth[exchangeName].ok = true;
       } catch (err) {
         console.error(`[Depth] Error fetching pairs for ${exchangeName}:`, err.message);
+        exchangeHealth[exchangeName].lastError = err.message;
+        exchangeHealth[exchangeName].ok = false;
       }
 
       return exchangeResults;
@@ -164,6 +182,31 @@ router.get('/', async (req, res) => {
     console.error('[Depth] Error:', err);
     res.status(500).json({ error: err.message });
   }
+});
+
+// GET /api/health - Per-exchange connection health
+router.get('/health', (req, res) => {
+  const STALE_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
+  const now = Date.now();
+
+  const health = {};
+  for (const ex of EXCHANGES) {
+    const h = exchangeHealth[ex];
+    const lastSuccessMs = h.lastSuccess ? now - new Date(h.lastSuccess).getTime() : null;
+    const isStale = lastSuccessMs === null || lastSuccessMs > STALE_THRESHOLD_MS;
+    const ok = h.ok === true && !isStale;
+
+    health[ex] = {
+      name: EXCHANGE_NAMES[ex],
+      ok,
+      lastSuccess: h.lastSuccess,
+      lastAttempt: h.lastAttempt,
+      lastError: h.lastError,
+      lastSuccessAgoMs: lastSuccessMs
+    };
+  }
+
+  res.json({ timestamp: new Date().toISOString(), exchanges: health });
 });
 
 module.exports = router;
