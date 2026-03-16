@@ -34,7 +34,27 @@ function formatTime(date) {
   });
 }
 
+function MaintenancePage() {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      minHeight: '100vh', background: '#0f1419', color: '#e7e9ea', textAlign: 'center', padding: 40
+    }}>
+      <div style={{ fontSize: 64, marginBottom: 24 }}>🔧</div>
+      <h1 style={{ fontSize: 32, marginBottom: 12 }}>Down for Maintenance</h1>
+      <p style={{ fontSize: 18, color: '#8899a6', maxWidth: 480 }}>
+        The USDG Trading Volume Tracker is temporarily offline for upgrades.
+        We'll be back shortly.
+      </p>
+    </div>
+  );
+}
+
 export default function App() {
+  if (import.meta.env.VITE_MAINTENANCE_MODE === 'true') {
+    return <MaintenancePage />;
+  }
+
   const [activeTab, setActiveTab] = useState('overall');
   const [selectedExchange, setSelectedExchange] = useState('kraken');
   const [exchangeTimeRange, setExchangeTimeRange] = useState('30d');
