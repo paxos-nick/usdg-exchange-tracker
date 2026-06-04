@@ -4,14 +4,21 @@ const BASE_URL = 'https://api-cloud.bitmart.com';
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Bitmart uses USDG_USDT format
-const USDG_PAIRS = ['USDG_USDT'];
+const STABLECOINS = new Set(['USDG', 'USDT', 'USDC', 'USD', 'DAI']);
 
 async function getUSDGPairs() {
-  return USDG_PAIRS.map(pair => ({
-    symbol: pair,
-    displayName: pair.replace('_', '/')
-  }));
+  const response = await axios.get(`${BASE_URL}/spot/v1/symbols/details`);
+  const symbols = response.data?.data?.symbols || [];
+
+  return symbols
+    .filter(s => s.trade_status === 'trading' && s.symbol.includes('USDG'))
+    .map(s => ({
+      symbol: s.symbol,
+      displayName: s.symbol.replace('_', '/'),
+      base: s.base_currency,
+      quote: s.quote_currency,
+      needsConversion: !STABLECOINS.has(s.base_currency)
+    }));
 }
 
 async function getDailyVolume(pair) {
@@ -71,7 +78,8 @@ async function getAggregatedVolume() {
       for (const day of dailyData) {
         if (day.date) {
           const existing = volumeByDate.get(day.date) || 0;
-          volumeByDate.set(day.date, existing + day.volume);
+          const usdVolume = pair.needsConversion ? day.volume * day.close : day.volume;
+          volumeByDate.set(day.date, existing + usdVolume);
         }
       }
 
@@ -113,7 +121,7 @@ async function getPerPairVolume() {
 
       volumeByPair[pair.displayName] = dailyData.map(d => ({
         date: d.date,
-        volume: d.volume
+        volume: pair.needsConversion ? d.volume * d.close : d.volume
       }));
 
       await delay(250);

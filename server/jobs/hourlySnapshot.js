@@ -4,6 +4,7 @@ const orcaService = require('../services/orca');
 const curveService = require('../services/curve');
 const kaminoService = require('../services/kamino');
 const aaveService = require('../services/aave');
+const paxgService = require('../services/paxg');
 
 async function runSnapshot() {
   const isDailyRun = new Date().getUTCHours() === 0;
@@ -108,6 +109,24 @@ async function runSnapshot() {
 
     await client.query('COMMIT');
     console.log(`[Snapshot] ${snapshotType} snapshot #${snapshotId} complete`);
+
+    // On daily runs, append today's PAXG supply to history
+    if (isDailyRun) {
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        const { blockNumber: refBlock, timestamp: refTs } = await paxgService.getCurrentBlockInfo();
+        const { supply, blockNumber } = await paxgService.getSupplyForDate(today, refBlock, refTs);
+        await pool.query(
+          `INSERT INTO paxg_supply_history (supply_date, supply, block_number)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (supply_date) DO UPDATE SET supply = EXCLUDED.supply, block_number = EXCLUDED.block_number`,
+          [today, supply, blockNumber]
+        );
+        console.log(`[Snapshot] PAXG supply logged: ${supply.toFixed(2)} tokens (block ${blockNumber})`);
+      } catch (err) {
+        console.error('[Snapshot] Failed to log PAXG supply:', err.message);
+      }
+    }
   } catch (err) {
     await client.query('ROLLBACK');
     console.error(`[Snapshot] Failed:`, err.message);

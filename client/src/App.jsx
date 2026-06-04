@@ -15,6 +15,8 @@ import DefiPoolsTable from './components/DefiPoolsTable';
 import VaultsLendingTable from './components/VaultsLendingTable';
 import OverallVolumeChart from './components/OverallVolumeChart';
 import TotalDefiTab from './components/TotalDefiTab';
+import PyusdTab from './components/PyusdTab';
+import PaxgSupplyTab from './components/PaxgSupplyTab';
 import { useVolumeData, usePairVolumeData } from './hooks/useVolumeData';
 
 const EXCHANGE_NAMES = {
@@ -142,6 +144,18 @@ export default function App() {
         >
           Fuse Box
         </button>
+        <button
+          className={`tab-btn ${activeTab === 'pyusd' ? 'active' : ''}`}
+          onClick={() => setActiveTab('pyusd')}
+        >
+          PYUSD
+        </button>
+        <button
+          className={`tab-btn ${activeTab === 'paxg-supply' ? 'active' : ''}`}
+          onClick={() => setActiveTab('paxg-supply')}
+        >
+          PAXG Supply
+        </button>
       </nav>
 
       {activeTab === 'weekly' ? (
@@ -160,6 +174,10 @@ export default function App() {
         <VaultsLendingTable />
       ) : activeTab === 'fusebox' ? (
         <FuseBox />
+      ) : activeTab === 'pyusd' ? (
+        <PyusdTab />
+      ) : activeTab === 'paxg-supply' ? (
+        <PaxgSupplyTab />
       ) : (
         <>
           <Dashboard />

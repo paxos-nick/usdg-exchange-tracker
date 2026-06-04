@@ -171,6 +171,109 @@ async function getPerPairVolume() {
   };
 }
 
+// Stablecoins where 1 unit ~= $1 — used to detect when volume is already
+// USD-denominated and doesn't need a price multiplication.
+function isStableQuote(asset) {
+  const stables = new Set(['PYUSD', 'USDG', 'USDT', 'USDC', 'USD', 'ZUSD', 'DAI']);
+  if (!asset) return false;
+  const upper = asset.toUpperCase();
+  return stables.has(upper) || stables.has(upper.replace(/^[XZ]/, ''));
+}
+
+async function getPYUSDPairs() {
+  const response = await axios.get(`${BASE_URL}/AssetPairs`);
+
+  if (response.data.error && response.data.error.length > 0) {
+    throw new Error(`Kraken API error: ${response.data.error.join(', ')}`);
+  }
+
+  const allPairs = response.data.result;
+  const result = [];
+
+  for (const [pairName, pairInfo] of Object.entries(allPairs)) {
+    const base = (pairInfo.base || '').toUpperCase();
+    const quote = (pairInfo.quote || '').toUpperCase();
+    const wsname = pairInfo.wsname || pairName;
+
+    if (base === 'PYUSD' || quote === 'PYUSD' || wsname.toUpperCase().includes('PYUSD')) {
+      result.push({
+        symbol: pairName,
+        wsname,
+        base: pairInfo.base,
+        quote: pairInfo.quote
+      });
+    }
+  }
+
+  return result;
+}
+
+async function getMonthlyPyusdVolume() {
+  const pairs = await getPYUSDPairs();
+
+  if (pairs.length === 0) {
+    return { exchange: 'kraken', pairs: [], volumeByPair: {} };
+  }
+
+  // Last 12 complete months
+  const now = new Date();
+  const currentMonth = now.toISOString().slice(0, 7);
+  const cutoff = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 12, 1));
+
+  const volumeByPair = {};
+  const pairNames = [];
+
+  for (const pair of pairs) {
+    try {
+      const displayName = pair.wsname || pair.symbol;
+      pairNames.push(displayName);
+
+      const dailyData = await getDailyVolume(pair.symbol);
+
+      // PYUSD as base means volume is already PYUSD (~$1).
+      // Anything else (BTC/ETH base, or PYUSD as quote with non-PYUSD base) needs price conversion.
+      const baseIsPyusd = (pair.base || '').toUpperCase() === 'PYUSD';
+      const quoteIsStable = isStableQuote(pair.quote);
+
+      const monthly = new Map();
+      for (const day of dailyData) {
+        if (!day.date) continue;
+        const dayDate = new Date(day.date + 'T00:00:00Z');
+        if (dayDate < cutoff) continue;
+        const month = day.date.slice(0, 7);
+        if (month === currentMonth) continue;
+
+        let usdVolume;
+        if (baseIsPyusd) {
+          // e.g. PYUSD/USD, PYUSD/EUR — volume in PYUSD ~ $1
+          usdVolume = day.rawVolume;
+        } else if (quoteIsStable) {
+          // e.g. ETH/PYUSD — volume in ETH, multiply by close (price in PYUSD ~ USD)
+          usdVolume = day.rawVolume * day.close;
+        } else {
+          usdVolume = day.rawVolume * day.close;
+        }
+
+        monthly.set(month, (monthly.get(month) || 0) + usdVolume);
+      }
+
+      volumeByPair[displayName] = Array.from(monthly.entries())
+        .map(([month, volume]) => ({ month, volume }))
+        .sort((a, b) => a.month.localeCompare(b.month));
+
+      await delay(1000);
+    } catch (err) {
+      console.error(`[kraken] Error fetching PYUSD volume for ${pair.symbol}:`, err.message);
+    }
+  }
+
+  return {
+    exchange: 'kraken',
+    pairs: pairNames,
+    volumeByPair
+  };
+}
+
 async function getOrderbook(pairSymbol) {
   const response = await axios.get(`${BASE_URL}/Depth`, {
     params: { pair: pairSymbol, count: 500 }
@@ -199,5 +302,7 @@ module.exports = {
   getDailyVolume,
   getAggregatedVolume,
   getPerPairVolume,
-  getOrderbook
+  getOrderbook,
+  getPYUSDPairs,
+  getMonthlyPyusdVolume
 };

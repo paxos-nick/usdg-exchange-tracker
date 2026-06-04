@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   BarChart,
   Bar,
@@ -11,7 +11,7 @@ import {
   LabelList
 } from 'recharts';
 import TimeRangeSelector from './TimeRangeSelector';
-import { useAggregatedData, useDefiPools } from '../hooks/useVolumeData';
+import { useAggregatedData, useDefiPools, useDexHistory } from '../hooks/useVolumeData';
 
 const SOURCE_COLORS = {
   kraken: '#7c3aed',
@@ -20,7 +20,8 @@ const SOURCE_COLORS = {
   kucoin: '#3b82f6',
   bitmart: '#ec4899',
   okx: '#10b981',
-  orca: '#ff6b35'
+  orca: '#ff6b35',
+  curve: '#e64980'
 };
 
 const SOURCE_NAMES = {
@@ -30,7 +31,8 @@ const SOURCE_NAMES = {
   kucoin: 'Kucoin',
   bitmart: 'Bitmart',
   okx: 'OKX',
-  orca: 'Orca (DEX)'
+  orca: 'Orca (DEX)',
+  curve: 'Curve (DEX)'
 };
 
 function formatVolume(value) {
@@ -108,9 +110,10 @@ function filterDataByTimeRange(data, timeRange, sources) {
 export default function OverallVolumeChart() {
   const { data: cexData, loading: cexLoading } = useAggregatedData();
   const { data: dexData, loading: dexLoading } = useDefiPools();
+  const { data: dexHistory, loading: histLoading } = useDexHistory();
   const [timeRange, setTimeRange] = useState('30d');
 
-  const loading = cexLoading || dexLoading;
+  const loading = cexLoading || dexLoading || histLoading;
 
   if (loading) {
     return (
@@ -123,19 +126,38 @@ export default function OverallVolumeChart() {
 
   // Merge CEX daily volume with DEX 24h volume on today's date
   const cexDaily = cexData?.dailyVolume || [];
-  const allSources = [...(cexData?.exchanges || []), 'orca'];
+  const allSources = [...(cexData?.exchanges || []), 'orca', 'curve'];
 
-  // Add Orca 24h volume to today's entry
+  // Build historical DEX volume from Postgres snapshots
+  const orcaHistoryByDate = {};
+  const curveHistoryByDate = {};
+  if (dexHistory?.history) {
+    for (const snap of dexHistory.history) {
+      const orcaVol = snap.pools
+        .filter(p => p.venue === 'Orca')
+        .reduce((sum, p) => sum + (p.volume24h || 0), 0);
+      if (orcaVol > 0) orcaHistoryByDate[snap.date] = orcaVol;
+
+      const curveVol = snap.pools
+        .filter(p => p.venue === 'Curve')
+        .reduce((sum, p) => sum + (p.volume24h || 0), 0);
+      if (curveVol > 0) curveHistoryByDate[snap.date] = curveVol;
+    }
+  }
+
+  // Add DEX volume: live 24h for today, historical snapshots for past dates
   const today = new Date().toISOString().split('T')[0];
-  const orcaVolume24h = (dexData?.pools || []).reduce((sum, p) => sum + (p.stats?.['24h']?.volume || 0), 0);
+  const livePools = dexData?.pools || [];
+  const orcaVolume24h = livePools.filter(p => p.venue === 'Orca').reduce((sum, p) => sum + (p.stats?.['24h']?.volume || 0), 0);
+  const curveVolume24h = livePools.filter(p => p.venue === 'Curve').reduce((sum, p) => sum + (p.stats?.['24h']?.volume || 0), 0);
 
   const mergedData = cexDaily.map(d => {
     const row = { date: d.date, byExchange: d.byExchange };
     (cexData?.exchanges || []).forEach(ex => {
       row[ex] = d.byExchange?.[ex] || 0;
     });
-    // Add Orca volume for today only
-    row.orca = d.date === today ? orcaVolume24h : 0;
+    row.orca = d.date === today ? orcaVolume24h : (orcaHistoryByDate[d.date] || 0);
+    row.curve = d.date === today ? curveVolume24h : (curveHistoryByDate[d.date] || 0);
     return row;
   });
 

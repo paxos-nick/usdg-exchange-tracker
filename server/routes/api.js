@@ -5,6 +5,9 @@ const gateService = require('../services/gate');
 const kucoinService = require('../services/kucoin');
 const bitmartService = require('../services/bitmart');
 const okxService = require('../services/okx');
+const cryptocomService = require('../services/cryptocom');
+const paxgService = require('../services/paxg');
+const dbPool = require('../db/pool');
 
 const router = express.Router();
 
@@ -252,6 +255,153 @@ router.get('/pairs/:exchange', async (req, res) => {
     res.json(data);
   } catch (err) {
     console.error(`Error fetching ${exchange} pair volume:`, err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/pyusd - Aggregated PYUSD pair monthly volume across exchanges (last 12 months)
+router.get('/pyusd', async (req, res) => {
+  const cacheKey = 'pyusd_monthly_all';
+
+  const cached = getCached(cacheKey);
+  if (cached) {
+    return res.json(cached);
+  }
+
+  try {
+    const [cryptocomData, krakenData] = await Promise.all([
+      cryptocomService.getMonthlyVolume().catch(err => {
+        console.error('cryptocom PYUSD error:', err.message);
+        return { exchange: 'cryptocom', pairs: [], volumeByPair: {}, totalByMonth: [] };
+      }),
+      krakenService.getMonthlyPyusdVolume().catch(err => {
+        console.error('kraken PYUSD error:', err.message);
+        return { exchange: 'kraken', pairs: [], volumeByPair: {} };
+      })
+    ]);
+
+    // Normalize each exchange into { exchange, pairs: [{ label, series: [{month, volume}] }] }
+    const exchanges = [];
+
+    // crypto.com
+    exchanges.push({
+      exchange: 'cryptocom',
+      displayName: 'Crypto.com',
+      pairs: cryptocomData.pairs.map(p => ({
+        label: p,
+        series: cryptocomData.volumeByPair[p] || []
+      }))
+    });
+
+    // kraken
+    exchanges.push({
+      exchange: 'kraken',
+      displayName: 'Kraken',
+      pairs: krakenData.pairs.map(p => ({
+        label: p,
+        series: krakenData.volumeByPair[p] || []
+      }))
+    });
+
+    // Build the union of months across all data
+    const monthSet = new Set();
+    for (const ex of exchanges) {
+      for (const pair of ex.pairs) {
+        for (const point of pair.series) monthSet.add(point.month);
+      }
+    }
+    const months = Array.from(monthSet).sort().slice(-12);
+
+    // For each month, compute totals overall, by exchange, and by pair (prefixed)
+    const totalByMonth = months.map(month => {
+      const byPair = {};
+      const byExchange = {};
+      let volume = 0;
+      for (const ex of exchanges) {
+        let exTotal = 0;
+        for (const pair of ex.pairs) {
+          const point = pair.series.find(s => s.month === month);
+          const v = point ? point.volume : 0;
+          const key = `${ex.displayName}: ${pair.label}`;
+          byPair[key] = v;
+          exTotal += v;
+        }
+        byExchange[ex.exchange] = exTotal;
+        volume += exTotal;
+      }
+      return { month, volume, byExchange, byPair };
+    });
+
+    // Flat list of all pair labels (prefixed with exchange) in stable order
+    const pairLabels = [];
+    for (const ex of exchanges) {
+      for (const pair of ex.pairs) {
+        pairLabels.push(`${ex.displayName}: ${pair.label}`);
+      }
+    }
+
+    const data = {
+      months,
+      pairs: pairLabels,
+      exchanges: exchanges.map(ex => ({
+        exchange: ex.exchange,
+        displayName: ex.displayName,
+        pairs: ex.pairs.map(p => p.label)
+      })),
+      totalByMonth
+    };
+
+    setCache(cacheKey, data);
+    res.json(data);
+  } catch (err) {
+    console.error('Error fetching PYUSD volume:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/paxg/supply - PAXG circulating supply history from Postgres + live today
+router.get('/paxg/supply', async (req, res) => {
+  const cacheKey = 'paxg_supply_history';
+  const cached = getCached(cacheKey);
+  if (cached) return res.json(cached);
+
+  try {
+    // Load all historical rows from Postgres
+    const result = await dbPool.query(
+      `SELECT supply_date::text AS date, supply::float, block_number
+       FROM paxg_supply_history
+       ORDER BY supply_date ASC`
+    );
+
+    const history = result.rows.map(r => ({
+      date: r.date.split('T')[0],
+      supply: parseFloat(r.supply),
+      blockNumber: parseInt(r.block_number)
+    }));
+
+    // Append today's live supply if not yet in DB
+    const today = new Date().toISOString().split('T')[0];
+    const hasToday = history.length > 0 && history[history.length - 1].date === today;
+    if (!hasToday) {
+      try {
+        const liveSupply = await paxgService.getCurrentSupply();
+        history.push({ date: today, supply: liveSupply, blockNumber: null });
+      } catch (err) {
+        console.error('[paxg] Failed to fetch live supply:', err.message);
+      }
+    }
+
+    const data = {
+      token: 'PAXG',
+      address: '0x45804880De22913dAFE09f4980848ECE6EcbAf78',
+      chain: 'ethereum',
+      history
+    };
+
+    setCache(cacheKey, data);
+    res.json(data);
+  } catch (err) {
+    console.error('Error fetching PAXG supply:', err);
     res.status(500).json({ error: err.message });
   }
 });

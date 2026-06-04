@@ -82,6 +82,16 @@ const SCHEMA_SQL = `
 
   CREATE INDEX IF NOT EXISTS idx_lending_snapshot ON lending_snapshots (snapshot_id);
   CREATE INDEX IF NOT EXISTS idx_lending_venue_time ON lending_snapshots (venue, created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS paxg_supply_history (
+    id             SERIAL PRIMARY KEY,
+    supply_date    DATE NOT NULL UNIQUE,
+    supply         NUMERIC(20,8) NOT NULL,
+    block_number   BIGINT NOT NULL,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_paxg_supply_date ON paxg_supply_history (supply_date DESC);
 `;
 
 async function setupDatabase() {
