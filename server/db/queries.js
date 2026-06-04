@@ -139,30 +139,50 @@ async function getLatestLending() {
 
 // Get pool history — one entry per snapshot date with pools + lending arrays
 async function getPoolHistory() {
-  // Get all complete snapshots that have pool data, pick one per day (prefer daily over hourly)
+  // Get all complete snapshot IDs grouped by date.
+  // We collect pools from ALL snapshots on a given day and merge by address,
+  // so that e.g. a Curve migration snapshot and an Orca daily snapshot on the
+  // same date both contribute their data.
   const result = await pool.query(`
-    WITH ranked AS (
-      SELECT s.id, DATE(s.taken_at AT TIME ZONE 'UTC') as snap_date, s.snapshot_type,
-             ROW_NUMBER() OVER (
-               PARTITION BY DATE(s.taken_at AT TIME ZONE 'UTC')
-               ORDER BY CASE WHEN s.snapshot_type IN ('daily','migration') THEN 0 ELSE 1 END, s.taken_at DESC
-             ) as rn
-      FROM snapshots s
-      WHERE s.status = 'complete'
-        AND EXISTS (SELECT 1 FROM dex_pool_snapshots d WHERE d.snapshot_id = s.id)
-    )
-    SELECT id, snap_date FROM ranked WHERE rn = 1 ORDER BY snap_date ASC
+    SELECT
+      DATE(s.taken_at AT TIME ZONE 'UTC') AS snap_date,
+      array_agg(s.id ORDER BY
+        CASE WHEN s.snapshot_type IN ('daily','migration') THEN 0 ELSE 1 END,
+        s.taken_at DESC
+      ) AS snapshot_ids
+    FROM snapshots s
+    WHERE s.status = 'complete'
+      AND EXISTS (SELECT 1 FROM dex_pool_snapshots d WHERE d.snapshot_id = s.id)
+    GROUP BY snap_date
+    ORDER BY snap_date ASC
   `);
 
   const history = [];
-  for (const snap of result.rows) {
-    const [poolRows, lendingRows] = await Promise.all([
-      pool.query(`SELECT * FROM dex_pool_snapshots WHERE snapshot_id = $1`, [snap.id]),
-      pool.query(`SELECT * FROM lending_snapshots WHERE snapshot_id = $1`, [snap.id])
-    ]);
+  for (const row of result.rows) {
+    const snapIds = row.snapshot_ids;
+
+    // Fetch pools from all snapshots on this date, then merge by address.
+    // For each address, keep the row that has volume data (from daily/migration snapshots).
+    const poolRows = await pool.query(
+      `SELECT DISTINCT ON (address) *
+       FROM dex_pool_snapshots
+       WHERE snapshot_id = ANY($1)
+       ORDER BY address,
+         CASE WHEN volume_24h IS NOT NULL THEN 0 ELSE 1 END,
+         snapshot_id DESC`,
+      [snapIds]
+    );
+
+    const lendingRows = await pool.query(
+      `SELECT DISTINCT ON (venue) *
+       FROM lending_snapshots
+       WHERE snapshot_id = ANY($1)
+       ORDER BY venue, snapshot_id DESC`,
+      [snapIds]
+    );
 
     history.push({
-      date: snap.snap_date.toISOString().split('T')[0],
+      date: row.snap_date.toISOString().split('T')[0],
       pools: poolRows.rows.map(r => ({
         address: r.address,
         name: r.name,
