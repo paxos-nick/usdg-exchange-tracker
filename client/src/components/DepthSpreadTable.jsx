@@ -127,7 +127,7 @@ export default function DepthSpreadTable() {
 
       <DepthTable
         rows={stablecoinRows}
-        bpsLevels={[1, 2, 5, 10, 100]}
+        bpsLevels={[1, 2, 5, 10, 50, 100]}
         title="Stablecoin Pairs"
       />
 
