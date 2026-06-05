@@ -57,6 +57,8 @@ export default function App() {
     return <MaintenancePage />;
   }
 
+  const hideDefiTabs = import.meta.env.VITE_HIDE_DEFI_TABS === 'true';
+
   const [activeTab, setActiveTab] = useState('overall');
   const [selectedExchange, setSelectedExchange] = useState('kraken');
   const [exchangeTimeRange, setExchangeTimeRange] = useState('30d');
@@ -120,18 +122,22 @@ export default function App() {
         >
           Depth & Spread
         </button>
-        <button
-          className={`tab-btn ${activeTab === 'totaldefi' ? 'active' : ''}`}
-          onClick={() => setActiveTab('totaldefi')}
-        >
-          Total DeFi
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'dex' ? 'active' : ''}`}
-          onClick={() => setActiveTab('dex')}
-        >
-          DEX Dashboard
-        </button>
+        {!hideDefiTabs && (
+          <button
+            className={`tab-btn ${activeTab === 'totaldefi' ? 'active' : ''}`}
+            onClick={() => setActiveTab('totaldefi')}
+          >
+            Total DeFi
+          </button>
+        )}
+        {!hideDefiTabs && (
+          <button
+            className={`tab-btn ${activeTab === 'dex' ? 'active' : ''}`}
+            onClick={() => setActiveTab('dex')}
+          >
+            DEX Dashboard
+          </button>
+        )}
         <button
           className={`tab-btn ${activeTab === 'vaults' ? 'active' : ''}`}
           onClick={() => setActiveTab('vaults')}
