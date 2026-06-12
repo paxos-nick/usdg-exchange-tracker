@@ -17,6 +17,10 @@ function formatUSD(v) {
   return `$${v.toFixed(0)}`;
 }
 
+function formatPrice(v) {
+  return `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 function formatUSDShort(v) {
   if (v >= 1e9) return `${(v / 1e9).toFixed(1)}B`;
   if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
@@ -72,9 +76,9 @@ function DepthTable({ symbol, depth, color }) {
     <div>
       <h4 style={{ color, marginBottom: 8 }}>{symbol}</h4>
       <p style={{ color: '#71767b', fontSize: 11, marginTop: -4, marginBottom: 12 }}>
-        <span style={{ color: TEAL }}>Bid: {formatUSD(depth.bestBid)}</span>
+        <span style={{ color: TEAL }}>Bid: {formatPrice(depth.bestBid)}</span>
         &nbsp;·&nbsp;
-        <span style={{ color: '#ef4444' }}>Ask: {formatUSD(depth.bestAsk)}</span>
+        <span style={{ color: '#ef4444' }}>Ask: {formatPrice(depth.bestAsk)}</span>
         &nbsp;·&nbsp; Spread: {depth.spreadBps.toFixed(2)} bps
       </p>
       <table className="depth-table">
@@ -142,7 +146,7 @@ export default function BinancePaxgTab() {
             <div className="comparison-values">
               <div className="comparison-current">
                 <span className="value-label">Current</span>
-                <span className="value-number">{formatUSD(paxgLatest?.close || 0)}</span>
+                <span className="value-number">{formatPrice(paxgLatest?.close || 0)}</span>
               </div>
             </div>
           </div>
@@ -160,7 +164,7 @@ export default function BinancePaxgTab() {
             <div className="comparison-values">
               <div className="comparison-current">
                 <span className="value-label">Current</span>
-                <span className="value-number">{formatUSD(xautLatest?.close || 0)}</span>
+                <span className="value-number">{formatPrice(xautLatest?.close || 0)}</span>
               </div>
             </div>
           </div>
