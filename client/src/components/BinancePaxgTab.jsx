@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import {
-  BarChart, Bar, AreaChart, Area,
+  BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Legend
+  ResponsiveContainer
 } from 'recharts';
 import { useBinancePaxg } from '../hooks/useVolumeData';
 
@@ -63,24 +63,6 @@ function filterAndAggregate(dailyVolume, range) {
     }));
 }
 
-function DepthBar({ label, bid, ask, maxVal }) {
-  const bidPct = maxVal > 0 ? (bid / maxVal) * 100 : 0;
-  const askPct = maxVal > 0 ? (ask / maxVal) * 100 : 0;
-  return (
-    <div style={{ marginBottom: 12 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', color: '#71767b', fontSize: 11, marginBottom: 4 }}>
-        <span style={{ color: TEAL }}>{formatUSD(bid)}</span>
-        <span style={{ fontWeight: 600, color: '#e7e9ea' }}>{label}</span>
-        <span style={{ color: '#ef4444' }}>{formatUSD(ask)}</span>
-      </div>
-      <div style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', background: '#2f3542' }}>
-        <div style={{ width: `${bidPct}%`, background: TEAL, marginLeft: 'auto' }} />
-        <div style={{ width: 2, background: '#1a1f2e' }} />
-        <div style={{ width: `${askPct}%`, background: '#ef4444' }} />
-      </div>
-    </div>
-  );
-}
 
 export default function BinancePaxgTab() {
   const { data, loading, error, lastUpdated } = useBinancePaxg();
@@ -107,8 +89,6 @@ export default function BinancePaxgTab() {
   const total30d = dailyVolume.slice(-30).reduce((s, d) => s + d.volume, 0);
   const avgDaily30d = total30d / 30;
   const latest = dailyVolume[dailyVolume.length - 1];
-
-  const maxDepth = Math.max(...depth.bpsLevels.map(b => Math.max(depth.bidDepth[b] || 0, depth.askDepth[b] || 0)));
 
   return (
     <div className="weekly-trends">
@@ -197,48 +177,26 @@ export default function BinancePaxgTab() {
       <section className="chart-section">
         <h3>Orderbook Depth</h3>
         <p style={{ color: '#71767b', fontSize: 12, marginTop: -8, marginBottom: 16 }}>
-          Cumulative bid (teal) and ask (red) liquidity at each depth level from mid price ${depth.midPrice.toFixed(2)}
+          Cumulative bid and ask liquidity at each depth level from mid price ${depth.midPrice.toFixed(2)}
         </p>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32 }}>
-          {/* Visual bars */}
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#71767b', fontSize: 11, marginBottom: 8 }}>
-              <span style={{ color: TEAL }}>← Bids</span>
-              <span>Level</span>
-              <span style={{ color: '#ef4444' }}>Asks →</span>
-            </div>
+        <table className="depth-table">
+          <thead>
+            <tr>
+              <th>Level</th>
+              <th style={{ textAlign: 'right', color: TEAL }}>Bid Depth</th>
+              <th style={{ textAlign: 'right', color: '#ef4444' }}>Ask Depth</th>
+            </tr>
+          </thead>
+          <tbody>
             {depth.bpsLevels.map(bps => (
-              <DepthBar
-                key={bps}
-                label={`${bps} bps`}
-                bid={depth.bidDepth[bps] || 0}
-                ask={depth.askDepth[bps] || 0}
-                maxVal={maxDepth}
-              />
-            ))}
-          </div>
-
-          {/* Numeric table */}
-          <table className="depth-table" style={{ alignSelf: 'start' }}>
-            <thead>
-              <tr>
-                <th>Level</th>
-                <th style={{ textAlign: 'right', color: TEAL }}>Bid Depth</th>
-                <th style={{ textAlign: 'right', color: '#ef4444' }}>Ask Depth</th>
+              <tr key={bps}>
+                <td>{bps} bps</td>
+                <td style={{ textAlign: 'right' }}>{formatUSD(depth.bidDepth[bps] || 0)}</td>
+                <td style={{ textAlign: 'right' }}>{formatUSD(depth.askDepth[bps] || 0)}</td>
               </tr>
-            </thead>
-            <tbody>
-              {depth.bpsLevels.map(bps => (
-                <tr key={bps}>
-                  <td>{bps} bps</td>
-                  <td style={{ textAlign: 'right' }}>{formatUSD(depth.bidDepth[bps] || 0)}</td>
-                  <td style={{ textAlign: 'right' }}>{formatUSD(depth.askDepth[bps] || 0)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </table>
       </section>
 
       {lastUpdated && (
