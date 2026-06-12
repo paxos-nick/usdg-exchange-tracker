@@ -60,7 +60,19 @@ export default function App() {
 
   const hideDefiTabs = import.meta.env.VITE_HIDE_DEFI_TABS === 'true';
 
-  const [activeTab, setActiveTab] = useState('overall');
+  const VALID_TABS = ['overall','dashboard','weekly','monthly','depth','totaldefi','dex','vaults','fusebox','pyusd','paxg-supply','binance-paxg'];
+  const pathToTab = (path) => {
+    const slug = path.replace(/^\//, '') || 'overall';
+    return VALID_TABS.includes(slug) ? slug : 'overall';
+  };
+
+  const [activeTab, setActiveTab] = useState(() => pathToTab(window.location.pathname));
+
+  const navigateTo = (tab) => {
+    setActiveTab(tab);
+    const path = tab === 'overall' ? '/' : `/${tab}`;
+    window.history.pushState(null, '', path);
+  };
   const [selectedExchange, setSelectedExchange] = useState('kraken');
   const [exchangeTimeRange, setExchangeTimeRange] = useState('30d');
   const [pairExchange, setPairExchange] = useState('kraken');
@@ -95,38 +107,38 @@ export default function App() {
       <nav className="tab-navigation">
         <button
           className={`tab-btn ${activeTab === 'overall' ? 'active' : ''}`}
-          onClick={() => setActiveTab('overall')}
+          onClick={() => navigateTo('overall')}
         >
           Total USDG Activity
         </button>
         <button
           className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
-          onClick={() => setActiveTab('dashboard')}
+          onClick={() => navigateTo('dashboard')}
         >
           CEX Dashboard
         </button>
         <button
           className={`tab-btn ${activeTab === 'weekly' ? 'active' : ''}`}
-          onClick={() => setActiveTab('weekly')}
+          onClick={() => navigateTo('weekly')}
         >
           Weekly Trends
         </button>
         <button
           className={`tab-btn ${activeTab === 'monthly' ? 'active' : ''}`}
-          onClick={() => setActiveTab('monthly')}
+          onClick={() => navigateTo('monthly')}
         >
           Monthly Trends
         </button>
         <button
           className={`tab-btn ${activeTab === 'depth' ? 'active' : ''}`}
-          onClick={() => setActiveTab('depth')}
+          onClick={() => navigateTo('depth')}
         >
           Depth & Spread
         </button>
         {!hideDefiTabs && (
           <button
             className={`tab-btn ${activeTab === 'totaldefi' ? 'active' : ''}`}
-            onClick={() => setActiveTab('totaldefi')}
+            onClick={() => navigateTo('totaldefi')}
           >
             Total DeFi
           </button>
@@ -134,38 +146,38 @@ export default function App() {
         {!hideDefiTabs && (
           <button
             className={`tab-btn ${activeTab === 'dex' ? 'active' : ''}`}
-            onClick={() => setActiveTab('dex')}
+            onClick={() => navigateTo('dex')}
           >
             DEX Dashboard
           </button>
         )}
         <button
           className={`tab-btn ${activeTab === 'vaults' ? 'active' : ''}`}
-          onClick={() => setActiveTab('vaults')}
+          onClick={() => navigateTo('vaults')}
         >
           Vaults & Lending
         </button>
         <button
           className={`tab-btn ${activeTab === 'fusebox' ? 'active' : ''}`}
-          onClick={() => setActiveTab('fusebox')}
+          onClick={() => navigateTo('fusebox')}
         >
           Fuse Box
         </button>
         <button
           className={`tab-btn ${activeTab === 'pyusd' ? 'active' : ''}`}
-          onClick={() => setActiveTab('pyusd')}
+          onClick={() => navigateTo('pyusd')}
         >
           PYUSD
         </button>
         <button
           className={`tab-btn ${activeTab === 'paxg-supply' ? 'active' : ''}`}
-          onClick={() => setActiveTab('paxg-supply')}
+          onClick={() => navigateTo('paxg-supply')}
         >
           PAXG Supply
         </button>
         <button
           className={`tab-btn ${activeTab === 'binance-paxg' ? 'active' : ''}`}
-          onClick={() => setActiveTab('binance-paxg')}
+          onClick={() => navigateTo('binance-paxg')}
         >
           Binance PAXG
         </button>
