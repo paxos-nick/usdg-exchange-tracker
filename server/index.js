@@ -26,6 +26,17 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Temporary: test if this server can reach Binance.com market data API
+app.get('/test-binance', async (req, res) => {
+  const axios = require('axios');
+  try {
+    const r = await axios.get('https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT', { timeout: 5000 });
+    res.json({ success: true, data: r.data });
+  } catch (err) {
+    res.json({ success: false, status: err.response?.status, message: err.response?.data?.msg || err.message });
+  }
+});
+
 async function start() {
   // Initialize database schema (non-fatal — CEX endpoints work without DB)
   try {
