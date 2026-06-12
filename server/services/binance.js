@@ -49,6 +49,8 @@ async function getPairData(symbol) {
     dailyVolume,
     depth: {
       midPrice: depth.midPrice,
+      bestBid: depth.bestBid,
+      bestAsk: depth.bestAsk,
       spreadBps: depth.spreadBps,
       bpsLevels: BPS_LEVELS,
       bidDepth: depth.bidDepth,

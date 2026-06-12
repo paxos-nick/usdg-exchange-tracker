@@ -68,7 +68,7 @@ function calculateDepthMetrics(bids, asks, bpsLevels) {
     askDepth[level] = askTotal;
   }
 
-  return { midPrice, spreadBps, bidDepth, askDepth };
+  return { midPrice, bestBid, bestAsk, spreadBps, bidDepth, askDepth };
 }
 
 module.exports = {

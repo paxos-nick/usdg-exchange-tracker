@@ -72,7 +72,10 @@ function DepthTable({ symbol, depth, color }) {
     <div>
       <h4 style={{ color, marginBottom: 8 }}>{symbol}</h4>
       <p style={{ color: '#71767b', fontSize: 11, marginTop: -4, marginBottom: 12 }}>
-        Mid: {formatUSD(depth.midPrice)} &nbsp;·&nbsp; Spread: {depth.spreadBps.toFixed(2)} bps
+        <span style={{ color: TEAL }}>Bid: {formatUSD(depth.bestBid)}</span>
+        &nbsp;·&nbsp;
+        <span style={{ color: '#ef4444' }}>Ask: {formatUSD(depth.bestAsk)}</span>
+        &nbsp;·&nbsp; Spread: {depth.spreadBps.toFixed(2)} bps
       </p>
       <table className="depth-table">
         <thead>
