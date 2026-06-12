@@ -17,6 +17,7 @@ import OverallVolumeChart from './components/OverallVolumeChart';
 import TotalDefiTab from './components/TotalDefiTab';
 import PyusdTab from './components/PyusdTab';
 import PaxgSupplyTab from './components/PaxgSupplyTab';
+import BinancePaxgTab from './components/BinancePaxgTab';
 import { useVolumeData, usePairVolumeData } from './hooks/useVolumeData';
 
 const EXCHANGE_NAMES = {
@@ -162,6 +163,12 @@ export default function App() {
         >
           PAXG Supply
         </button>
+        <button
+          className={`tab-btn ${activeTab === 'binance-paxg' ? 'active' : ''}`}
+          onClick={() => setActiveTab('binance-paxg')}
+        >
+          Binance PAXG
+        </button>
       </nav>
 
       {activeTab === 'weekly' ? (
@@ -184,6 +191,8 @@ export default function App() {
         <PyusdTab />
       ) : activeTab === 'paxg-supply' ? (
         <PaxgSupplyTab />
+      ) : activeTab === 'binance-paxg' ? (
+        <BinancePaxgTab />
       ) : (
         <>
           <Dashboard />

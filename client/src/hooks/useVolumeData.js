@@ -434,6 +434,37 @@ export function usePyusdData() {
   return { data, loading, error, lastUpdated, refetch: fetchData };
 }
 
+export function useBinancePaxg() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await fetch('/api/binance/paxg');
+      if (!response.ok) throw new Error(`Failed to fetch Binance PAXG data: ${response.statusText}`);
+      const result = await response.json();
+      setData(result);
+      setLastUpdated(new Date());
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    const intervalId = setInterval(fetchData, DEPTH_REFRESH_INTERVAL); // 5 min — depth is live
+    return () => clearInterval(intervalId);
+  }, [fetchData]);
+
+  return { data, loading, error, lastUpdated, refetch: fetchData };
+}
+
 export function usePaxgSupply() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);

@@ -6,6 +6,7 @@ const kucoinService = require('../services/kucoin');
 const bitmartService = require('../services/bitmart');
 const okxService = require('../services/okx');
 const cryptocomService = require('../services/cryptocom');
+const binanceService = require('../services/binance');
 const paxgService = require('../services/paxg');
 const dbPool = require('../db/pool');
 
@@ -355,6 +356,22 @@ router.get('/pyusd', async (req, res) => {
     res.json(data);
   } catch (err) {
     console.error('Error fetching PYUSD volume:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/binance/paxg - Binance PAXG/USDT daily volume + live orderbook depth
+router.get('/binance/paxg', async (req, res) => {
+  const cacheKey = 'binance_paxg';
+  const cached = getCached(cacheKey);
+  if (cached) return res.json(cached);
+
+  try {
+    const data = await binanceService.getPaxgMarketData();
+    setCache(cacheKey, data);
+    res.json(data);
+  } catch (err) {
+    console.error('Error fetching Binance PAXG data:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
