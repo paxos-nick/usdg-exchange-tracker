@@ -2,11 +2,12 @@ import { useState } from 'react';
 import {
   BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer
+  ResponsiveContainer, Legend
 } from 'recharts';
 import { useBinancePaxg } from '../hooks/useVolumeData';
 
-const GOLD = '#f5a623';
+const PAXG_COLOR = '#f5a623';
+const XAUT_COLOR = '#c9d1d9';
 const TEAL = '#00d4aa';
 
 function formatUSD(v) {
@@ -35,14 +36,14 @@ function parseDate(dateStr) {
   return new Date(y, m - 1, d);
 }
 
-function filterAndAggregate(dailyVolume, range) {
-  if (!dailyVolume?.length) return [];
+function filterAndAggregate(combinedVolume, range) {
+  if (!combinedVolume?.length) return [];
   const now = new Date();
   const cutoff = range === '30d'
     ? new Date(now.getTime() - 30 * 86400000)
     : new Date(now.getTime() - 365 * 86400000);
 
-  const filtered = dailyVolume.filter(d => parseDate(d.date) >= cutoff);
+  const filtered = combinedVolume.filter(d => parseDate(d.date) >= cutoff);
 
   if (range === '30d') {
     return filtered.map(d => ({ ...d, displayDate: formatDate(d.date, range) }));
@@ -52,17 +53,48 @@ function filterAndAggregate(dailyVolume, range) {
   const monthly = new Map();
   filtered.forEach(d => {
     const key = d.date.slice(0, 7);
-    monthly.set(key, (monthly.get(key) || 0) + d.volume);
+    if (!monthly.has(key)) monthly.set(key, { paxg: 0, xaut: 0 });
+    monthly.get(key).paxg += d.paxg;
+    monthly.get(key).xaut += d.xaut;
   });
   return Array.from(monthly.entries())
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([month, volume]) => ({
+    .map(([month, v]) => ({
       date: `${month}-01`,
-      volume,
+      paxg: v.paxg,
+      xaut: v.xaut,
       displayDate: formatDate(`${month}-01`, '1y')
     }));
 }
 
+function DepthTable({ symbol, depth, color }) {
+  return (
+    <div>
+      <h4 style={{ color, marginBottom: 8 }}>{symbol}</h4>
+      <p style={{ color: '#71767b', fontSize: 11, marginTop: -4, marginBottom: 12 }}>
+        Mid: {formatUSD(depth.midPrice)} &nbsp;·&nbsp; Spread: {depth.spreadBps.toFixed(2)} bps
+      </p>
+      <table className="depth-table">
+        <thead>
+          <tr>
+            <th>Level</th>
+            <th style={{ textAlign: 'right', color: TEAL }}>Bid</th>
+            <th style={{ textAlign: 'right', color: '#ef4444' }}>Ask</th>
+          </tr>
+        </thead>
+        <tbody>
+          {depth.bpsLevels.map(bps => (
+            <tr key={bps}>
+              <td>{bps} bps</td>
+              <td style={{ textAlign: 'right' }}>{formatUSD(depth.bidDepth[bps] || 0)}</td>
+              <td style={{ textAlign: 'right' }}>{formatUSD(depth.askDepth[bps] || 0)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 export default function BinancePaxgTab() {
   const { data, loading, error, lastUpdated } = useBinancePaxg();
@@ -70,69 +102,71 @@ export default function BinancePaxgTab() {
 
   if (loading) return (
     <div className="weekly-trends">
-      <h2>Binance PAXG/USDT</h2>
-      <div className="loading">Loading Binance PAXG data...</div>
+      <h2>Binance Gold Markets</h2>
+      <div className="loading">Loading Binance data...</div>
     </div>
   );
 
   if (error) return (
     <div className="weekly-trends">
-      <h2>Binance PAXG/USDT</h2>
+      <h2>Binance Gold Markets</h2>
       <div className="error">Error: {error}</div>
     </div>
   );
 
   if (!data) return null;
 
-  const { dailyVolume, depth } = data;
-  const chartData = filterAndAggregate(dailyVolume, range);
-  const total30d = dailyVolume.slice(-30).reduce((s, d) => s + d.volume, 0);
-  const avgDaily30d = total30d / 30;
-  const latest = dailyVolume[dailyVolume.length - 1];
+  const { paxg, xaut, combinedVolume } = data;
+  const chartData = filterAndAggregate(combinedVolume, range);
+
+  const paxg30d = paxg.dailyVolume.slice(-30).reduce((s, d) => s + d.volume, 0);
+  const xaut30d = xaut.dailyVolume.slice(-30).reduce((s, d) => s + d.volume, 0);
+  const paxgLatest = paxg.dailyVolume[paxg.dailyVolume.length - 1];
+  const xautLatest = xaut.dailyVolume[xaut.dailyVolume.length - 1];
 
   return (
     <div className="weekly-trends">
-      <h2>Binance PAXG/USDT</h2>
+      <h2>Binance Gold Markets</h2>
       <p style={{ color: '#71767b', marginTop: -8, marginBottom: 24 }}>
-        PAX Gold trading volume and orderbook depth on Binance
+        PAXG/USDT and XAUT/USDT trading volume and orderbook depth on Binance
       </p>
 
       {/* Summary cards */}
       <section className="wow-section">
         <div className="comparison-grid">
           <div className="comparison-card">
-            <div className="comparison-label">Current Price</div>
+            <div className="comparison-label" style={{ color: PAXG_COLOR }}>PAXG/USDT Price</div>
             <div className="comparison-values">
               <div className="comparison-current">
-                <span className="value-label">PAXG/USDT</span>
-                <span className="value-number" style={{ color: GOLD }}>{formatUSD(latest?.close || 0)}</span>
+                <span className="value-label">Current</span>
+                <span className="value-number">{formatUSD(paxgLatest?.close || 0)}</span>
               </div>
             </div>
           </div>
           <div className="comparison-card">
-            <div className="comparison-label">30-Day Volume</div>
+            <div className="comparison-label" style={{ color: PAXG_COLOR }}>PAXG 30-Day Volume</div>
             <div className="comparison-values">
               <div className="comparison-current">
                 <span className="value-label">USDT</span>
-                <span className="value-number">{formatUSD(total30d)}</span>
+                <span className="value-number">{formatUSD(paxg30d)}</span>
               </div>
             </div>
           </div>
           <div className="comparison-card">
-            <div className="comparison-label">Avg Daily Volume</div>
+            <div className="comparison-label" style={{ color: XAUT_COLOR }}>XAUT/USDT Price</div>
             <div className="comparison-values">
               <div className="comparison-current">
-                <span className="value-label">30-day avg</span>
-                <span className="value-number">{formatUSD(avgDaily30d)}</span>
+                <span className="value-label">Current</span>
+                <span className="value-number">{formatUSD(xautLatest?.close || 0)}</span>
               </div>
             </div>
           </div>
           <div className="comparison-card">
-            <div className="comparison-label">Spread</div>
+            <div className="comparison-label" style={{ color: XAUT_COLOR }}>XAUT 30-Day Volume</div>
             <div className="comparison-values">
               <div className="comparison-current">
-                <span className="value-label">Best bid/ask</span>
-                <span className="value-number">{depth.spreadBps.toFixed(2)} bps</span>
+                <span className="value-label">USDT</span>
+                <span className="value-number">{formatUSD(xaut30d)}</span>
               </div>
             </div>
           </div>
@@ -165,38 +199,23 @@ export default function BinancePaxgTab() {
               <Tooltip
                 contentStyle={{ backgroundColor: '#1a1f2e', border: '1px solid #2f3542', borderRadius: 8, color: '#e7e9ea' }}
                 labelStyle={{ color: '#71767b' }}
-                formatter={(v) => [formatUSD(v), 'Volume (USDT)']}
+                formatter={(v, name) => [formatUSD(v), name]}
               />
-              <Bar dataKey="volume" fill={GOLD} radius={[4, 4, 0, 0]} name="Volume (USDT)" />
+              <Legend wrapperStyle={{ color: '#e7e9ea' }} />
+              <Bar dataKey="paxg" stackId="vol" fill={PAXG_COLOR} name="PAXG/USDT" />
+              <Bar dataKey="xaut" stackId="vol" fill={XAUT_COLOR} name="XAUT/USDT" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
       </section>
 
-      {/* Depth & Spread */}
+      {/* Depth tables side by side */}
       <section className="chart-section">
         <h3>Orderbook Depth</h3>
-        <p style={{ color: '#71767b', fontSize: 12, marginTop: -8, marginBottom: 16 }}>
-          Cumulative bid and ask liquidity at each depth level from mid price ${depth.midPrice.toFixed(2)}
-        </p>
-        <table className="depth-table">
-          <thead>
-            <tr>
-              <th>Level</th>
-              <th style={{ textAlign: 'right', color: TEAL }}>Bid Depth</th>
-              <th style={{ textAlign: 'right', color: '#ef4444' }}>Ask Depth</th>
-            </tr>
-          </thead>
-          <tbody>
-            {depth.bpsLevels.map(bps => (
-              <tr key={bps}>
-                <td>{bps} bps</td>
-                <td style={{ textAlign: 'right' }}>{formatUSD(depth.bidDepth[bps] || 0)}</td>
-                <td style={{ textAlign: 'right' }}>{formatUSD(depth.askDepth[bps] || 0)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40 }}>
+          <DepthTable symbol="PAXG/USDT" depth={paxg.depth} color={PAXG_COLOR} />
+          <DepthTable symbol="XAUT/USDT" depth={xaut.depth} color={XAUT_COLOR} />
+        </div>
       </section>
 
       {lastUpdated && (

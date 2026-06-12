@@ -367,7 +367,7 @@ router.get('/binance/paxg', async (req, res) => {
   if (cached) return res.json(cached);
 
   try {
-    const data = await binanceService.getPaxgMarketData();
+    const data = await binanceService.getGoldPairsData();
     setCache(cacheKey, data);
     res.json(data);
   } catch (err) {
