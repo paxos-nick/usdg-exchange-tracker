@@ -376,6 +376,63 @@ router.get('/binance/paxg', async (req, res) => {
   }
 });
 
+// GET /api/binance/paxg/depth-history - Historical Binance PAXG/XAUT depth snapshots with CSV export
+router.get('/binance/paxg/depth-history', async (req, res) => {
+  const { start, end, format = 'json' } = req.query;
+
+  if (!start || !end) {
+    return res.status(400).json({ error: 'start and end query params required (YYYY-MM-DD)' });
+  }
+
+  try {
+    const result = await dbPool.query(
+      `SELECT snapped_at, pair, mid_price, best_bid, best_ask, spread_bps,
+              bps_levels, bid_depth, ask_depth
+       FROM depth_snapshots
+       WHERE exchange = 'Binance'
+         AND snapped_at >= $1::date
+         AND snapped_at <  $2::date + interval '1 day'
+       ORDER BY snapped_at ASC, pair`,
+      [start, end]
+    );
+
+    const rows = result.rows;
+
+    if (format === 'csv') {
+      const BPS = [2, 10, 25, 50, 100];
+      const headers = [
+        'timestamp', 'symbol', 'mid_price', 'best_bid', 'best_ask', 'spread_bps',
+        ...BPS.flatMap(b => [`bid_${b}bps`, `ask_${b}bps`])
+      ];
+
+      const csvLines = [headers.join(',')];
+      for (const row of rows) {
+        const bid = row.bid_depth || {};
+        const ask = row.ask_depth || {};
+        const cols = [
+          row.snapped_at.toISOString(),
+          row.pair,
+          row.mid_price ?? '',
+          row.best_bid ?? '',
+          row.best_ask ?? '',
+          row.spread_bps ?? '',
+          ...BPS.flatMap(b => [bid[b] ?? '', ask[b] ?? ''])
+        ];
+        csvLines.push(cols.join(','));
+      }
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="binance_gold_depth_${start}_to_${end}.csv"`);
+      return res.send(csvLines.join('\n'));
+    }
+
+    res.json({ rows });
+  } catch (err) {
+    console.error('Error fetching Binance depth history:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/paxg/supply - PAXG circulating supply history from Postgres + live today
 router.get('/paxg/supply', async (req, res) => {
   const cacheKey = 'paxg_supply_history';

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useDepthData } from '../hooks/useVolumeData';
 
 function formatUSD(value) {
@@ -88,6 +89,52 @@ function DepthTable({ rows, bpsLevels, title }) {
   );
 }
 
+function defaultStart() {
+  const d = new Date();
+  d.setDate(d.getDate() - 7);
+  return d.toISOString().split('T')[0];
+}
+
+function CsvDownload({ endpoint, filename }) {
+  const [start, setStart] = useState(defaultStart);
+  const [end, setEnd] = useState(() => new Date().toISOString().split('T')[0]);
+  const [downloading, setDownloading] = useState(false);
+
+  async function handleDownload() {
+    setDownloading(true);
+    try {
+      const res = await fetch(`${endpoint}?start=${start}&end=${end}&format=csv`);
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename(start, end);
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(`Download failed: ${err.message}`);
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '20px 0 8px' }}>
+      <span style={{ color: '#71767b', fontSize: 13 }}>Download CSV:</span>
+      <input type="date" value={start} onChange={e => setStart(e.target.value)}
+        style={{ background: '#1a1f2e', border: '1px solid #2f3542', color: '#e7e9ea', borderRadius: 4, padding: '3px 8px', fontSize: 13 }} />
+      <span style={{ color: '#71767b', fontSize: 13 }}>to</span>
+      <input type="date" value={end} onChange={e => setEnd(e.target.value)}
+        style={{ background: '#1a1f2e', border: '1px solid #2f3542', color: '#e7e9ea', borderRadius: 4, padding: '3px 8px', fontSize: 13 }} />
+      <button onClick={handleDownload} disabled={downloading}
+        style={{ background: '#2f3542', color: '#e7e9ea', border: '1px solid #3d4555', borderRadius: 4, padding: '4px 14px', fontSize: 13, cursor: downloading ? 'wait' : 'pointer' }}>
+        {downloading ? 'Downloading…' : 'Download CSV'}
+      </button>
+    </div>
+  );
+}
+
 export default function DepthSpreadTable() {
   const { data, loading, error, lastUpdated } = useDepthData();
 
@@ -137,9 +184,14 @@ export default function DepthSpreadTable() {
         title="Risk Pairs"
       />
 
+      <CsvDownload
+        endpoint="/api/depth/history"
+        filename={(s, e) => `usdg_depth_${s}_to_${e}.csv`}
+      />
+
       {lastUpdated && (
         <div className="chart-footnote">
-          Last updated: {formatTime(lastUpdated)} (auto-refreshes every 5 min)
+          Last updated: {formatTime(lastUpdated)} (auto-refreshes every 5 min) · Depth snapshots logged hourly
         </div>
       )}
     </div>

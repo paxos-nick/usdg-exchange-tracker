@@ -102,6 +102,27 @@ const SCHEMA_SQL = `
 
   CREATE UNIQUE INDEX IF NOT EXISTS idx_metrics_log_date ON metrics_log (DATE(logged_at AT TIME ZONE 'UTC'));
   CREATE INDEX IF NOT EXISTS idx_metrics_log_at ON metrics_log (logged_at DESC);
+
+  CREATE TABLE IF NOT EXISTS depth_snapshots (
+    id          SERIAL PRIMARY KEY,
+    snapped_at  TIMESTAMPTZ NOT NULL,
+    exchange    VARCHAR(40) NOT NULL,
+    pair        VARCHAR(40) NOT NULL,
+    pair_type   VARCHAR(20) NOT NULL,
+    mid_price   NUMERIC(20,8),
+    best_bid    NUMERIC(20,8),
+    best_ask    NUMERIC(20,8),
+    spread_bps  NUMERIC(10,4),
+    bps_levels  INTEGER[],
+    bid_depth   JSONB,
+    ask_depth   JSONB,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_depth_snapped_at
+    ON depth_snapshots (snapped_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_depth_exchange_pair_time
+    ON depth_snapshots (exchange, pair, snapped_at DESC);
 `;
 
 async function setupDatabase() {

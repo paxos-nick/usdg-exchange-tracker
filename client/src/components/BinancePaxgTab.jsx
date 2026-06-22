@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip,
@@ -69,6 +69,52 @@ function filterAndAggregate(combinedVolume, range) {
       xaut: v.xaut,
       displayDate: formatDate(`${month}-01`, '1y')
     }));
+}
+
+function defaultStart() {
+  const d = new Date();
+  d.setDate(d.getDate() - 7);
+  return d.toISOString().split('T')[0];
+}
+
+function CsvDownload() {
+  const [start, setStart] = useState(defaultStart);
+  const [end, setEnd] = useState(() => new Date().toISOString().split('T')[0]);
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = useCallback(async () => {
+    setDownloading(true);
+    try {
+      const res = await fetch(`/api/binance/paxg/depth-history?start=${start}&end=${end}&format=csv`);
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `binance_gold_depth_${start}_to_${end}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(`Download failed: ${err.message}`);
+    } finally {
+      setDownloading(false);
+    }
+  }, [start, end]);
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16 }}>
+      <span style={{ color: '#71767b', fontSize: 13 }}>Download CSV:</span>
+      <input type="date" value={start} onChange={e => setStart(e.target.value)}
+        style={{ background: '#1a1f2e', border: '1px solid #2f3542', color: '#e7e9ea', borderRadius: 4, padding: '3px 8px', fontSize: 13 }} />
+      <span style={{ color: '#71767b', fontSize: 13 }}>to</span>
+      <input type="date" value={end} onChange={e => setEnd(e.target.value)}
+        style={{ background: '#1a1f2e', border: '1px solid #2f3542', color: '#e7e9ea', borderRadius: 4, padding: '3px 8px', fontSize: 13 }} />
+      <button onClick={handleDownload} disabled={downloading}
+        style={{ background: '#2f3542', color: '#e7e9ea', border: '1px solid #3d4555', borderRadius: 4, padding: '4px 14px', fontSize: 13, cursor: downloading ? 'wait' : 'pointer' }}>
+        {downloading ? 'Downloading…' : 'Download CSV'}
+      </button>
+    </div>
+  );
 }
 
 function DepthTable({ symbol, depth, color }) {
@@ -227,9 +273,11 @@ export default function BinancePaxgTab() {
         </div>
       </section>
 
+      <CsvDownload />
+
       {lastUpdated && (
         <div className="refresh-info">
-          Last updated: {lastUpdated.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })} (auto-refreshes every 5 min)
+          Last updated: {lastUpdated.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })} (auto-refreshes every 5 min) · Depth snapshots logged hourly
         </div>
       )}
     </div>

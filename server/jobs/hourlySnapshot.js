@@ -5,6 +5,9 @@ const curveService = require('../services/curve');
 const kaminoService = require('../services/kamino');
 const aaveService = require('../services/aave');
 const paxgService = require('../services/paxg');
+const { fetchUsdgDepth } = require('../services/depthFetcher');
+const binanceService = require('../services/binance');
+const { calculateDepthMetrics } = require('../utils/depthCalculator');
 
 async function runSnapshot() {
   const isDailyRun = new Date().getUTCHours() === 0;
@@ -126,6 +129,69 @@ async function runSnapshot() {
       } catch (err) {
         console.error('[Snapshot] Failed to log PAXG supply:', err.message);
       }
+    }
+
+    // Hourly depth snapshot — runs every hour for all runs (not just daily)
+    try {
+      const snappedAt = new Date();
+      const depthRows = [];
+
+      // USDG pairs across all CEX exchanges
+      const usdgRows = await fetchUsdgDepth();
+      for (const row of usdgRows) {
+        depthRows.push({
+          exchange: row.exchange,
+          pair: row.pair,
+          pairType: row.pairType,
+          midPrice: row.midPrice,
+          bestBid: row.bestBid,
+          bestAsk: row.bestAsk,
+          spreadBps: row.spreadBps,
+          bpsLevels: row.bpsLevels,
+          bidDepth: row.bidDepth,
+          askDepth: row.askDepth
+        });
+      }
+
+      // Binance PAXG + XAUT
+      const GOLD_BPS = [2, 10, 25, 50, 100];
+      for (const symbol of ['PAXGUSDT', 'XAUTUSDT']) {
+        try {
+          const ob = await binanceService.getOrderbook(symbol);
+          const metrics = calculateDepthMetrics(ob.bids, ob.asks, GOLD_BPS);
+          depthRows.push({
+            exchange: 'Binance',
+            pair: symbol,
+            pairType: 'gold',
+            midPrice: metrics.midPrice,
+            bestBid: metrics.bestBid,
+            bestAsk: metrics.bestAsk,
+            spreadBps: metrics.spreadBps,
+            bpsLevels: GOLD_BPS,
+            bidDepth: metrics.bidDepth,
+            askDepth: metrics.askDepth
+          });
+        } catch (err) {
+          console.error(`[Snapshot] Binance ${symbol} depth error:`, err.message);
+        }
+      }
+
+      for (const row of depthRows) {
+        await pool.query(
+          `INSERT INTO depth_snapshots
+             (snapped_at, exchange, pair, pair_type, mid_price, best_bid, best_ask,
+              spread_bps, bps_levels, bid_depth, ask_depth)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+          [
+            snappedAt, row.exchange, row.pair, row.pairType,
+            row.midPrice, row.bestBid, row.bestAsk, row.spreadBps,
+            row.bpsLevels, JSON.stringify(row.bidDepth), JSON.stringify(row.askDepth)
+          ]
+        );
+      }
+      console.log(`[Snapshot] Depth snapshot complete: ${depthRows.length} pairs logged`);
+    } catch (err) {
+      console.error('[Snapshot] Depth snapshot failed:', err.message);
     }
   } catch (err) {
     await client.query('ROLLBACK');
