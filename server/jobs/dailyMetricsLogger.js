@@ -6,6 +6,7 @@
 const cron = require('node-cron');
 const fs = require('fs');
 const path = require('path');
+const pool = require('../db/pool');
 
 // Import exchange services
 const krakenService = require('../services/kraken');
@@ -81,23 +82,35 @@ async function fetchAggregatedData() {
 }
 
 /**
- * Append metrics to log file as JSONL
+ * Append metrics to Postgres and local JSONL file (file is a backup/fallback)
  */
-function appendToLog(metrics) {
-  const logEntry = {
-    timestamp: new Date().toISOString(),
-    metrics
-  };
+async function appendToLog(metrics) {
+  const now = new Date();
+  const logEntry = { timestamp: now.toISOString(), metrics };
 
-  const logLine = JSON.stringify(logEntry) + '\n';
-
-  // Ensure logs directory exists
-  const logsDir = path.dirname(LOG_FILE);
-  if (!fs.existsSync(logsDir)) {
-    fs.mkdirSync(logsDir, { recursive: true });
+  // Write to Postgres (primary — survives redeploys)
+  try {
+    await pool.query(
+      `INSERT INTO metrics_log (logged_at, metrics)
+       VALUES ($1, $2)
+       ON CONFLICT (DATE(logged_at AT TIME ZONE 'UTC'))
+       DO UPDATE SET metrics = EXCLUDED.metrics, logged_at = EXCLUDED.logged_at`,
+      [now, JSON.stringify(metrics)]
+    );
+  } catch (err) {
+    console.error('[MetricsLogger] Failed to write to Postgres:', err.message);
   }
 
-  fs.appendFileSync(LOG_FILE, logLine);
+  // Also write to local file as backup
+  try {
+    const logLine = JSON.stringify(logEntry) + '\n';
+    const logsDir = path.dirname(LOG_FILE);
+    if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
+    fs.appendFileSync(LOG_FILE, logLine);
+  } catch (err) {
+    console.error('[MetricsLogger] Failed to write to file:', err.message);
+  }
+
   console.log(`[MetricsLogger] Logged metrics at ${logEntry.timestamp}`);
 }
 
@@ -114,8 +127,8 @@ async function runMetricsJob() {
     // Calculate metrics
     const metrics = calculateAllMetrics(aggregatedData);
 
-    // Log to file
-    appendToLog(metrics);
+    // Log to Postgres + file
+    await appendToLog(metrics);
 
     console.log('[MetricsLogger] Metrics collection complete:', {
       volume7Day: `$${(metrics.volume7Day / 1e6).toFixed(2)}M`,

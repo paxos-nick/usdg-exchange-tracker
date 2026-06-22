@@ -92,6 +92,16 @@ const SCHEMA_SQL = `
   );
 
   CREATE INDEX IF NOT EXISTS idx_paxg_supply_date ON paxg_supply_history (supply_date DESC);
+
+  CREATE TABLE IF NOT EXISTS metrics_log (
+    id           SERIAL PRIMARY KEY,
+    logged_at    TIMESTAMPTZ NOT NULL,
+    metrics      JSONB NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_metrics_log_date ON metrics_log (DATE(logged_at AT TIME ZONE 'UTC'));
+  CREATE INDEX IF NOT EXISTS idx_metrics_log_at ON metrics_log (logged_at DESC);
 `;
 
 async function setupDatabase() {

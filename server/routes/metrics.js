@@ -1,35 +1,39 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const pool = require('../db/pool');
 
 const router = express.Router();
 
 const LOG_FILE = path.join(__dirname, '../logs/weekly-metrics.jsonl');
 
 /**
- * Read and parse the metrics log file
+ * Read metrics from Postgres, falling back to local JSONL file
  */
-function readMetricsLog() {
-  if (!fs.existsSync(LOG_FILE)) {
-    return [];
-  }
-
-  const content = fs.readFileSync(LOG_FILE, 'utf-8');
-  const lines = content.trim().split('\n').filter(Boolean);
-
-  const entries = [];
-  for (const line of lines) {
-    try {
-      entries.push(JSON.parse(line));
-    } catch (e) {
-      // Skip malformed lines
+async function readMetricsLog() {
+  // Try Postgres first
+  try {
+    const result = await pool.query(
+      `SELECT logged_at, metrics FROM metrics_log ORDER BY logged_at ASC`
+    );
+    if (result.rows.length > 0) {
+      return result.rows.map(r => ({
+        timestamp: r.logged_at.toISOString(),
+        metrics: r.metrics
+      }));
     }
+  } catch (err) {
+    console.error('[Metrics] Postgres read failed, falling back to file:', err.message);
   }
 
-  // Sort by timestamp
-  entries.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-
-  return entries;
+  // Fallback to local JSONL file
+  if (!fs.existsSync(LOG_FILE)) return [];
+  const content = fs.readFileSync(LOG_FILE, 'utf-8');
+  const entries = [];
+  for (const line of content.trim().split('\n').filter(Boolean)) {
+    try { entries.push(JSON.parse(line)); } catch (e) {}
+  }
+  return entries.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 }
 
 /**
@@ -95,9 +99,9 @@ function groupByMonth(entries) {
 }
 
 // GET /api/metrics - Get all historical metrics
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const entries = readMetricsLog();
+    const entries = await readMetricsLog();
     res.json({
       entries,
       count: entries.length
@@ -109,9 +113,9 @@ router.get('/', (req, res) => {
 });
 
 // GET /api/metrics/weekly - Get metrics grouped by week
-router.get('/weekly', (req, res) => {
+router.get('/weekly', async (req, res) => {
   try {
-    const entries = readMetricsLog();
+    const entries = await readMetricsLog();
     const weekly = groupByWeek(entries);
 
     // Calculate week-over-week changes for the most recent weeks
@@ -181,9 +185,9 @@ router.get('/weekly', (req, res) => {
 });
 
 // GET /api/metrics/monthly - Get metrics grouped by month
-router.get('/monthly', (req, res) => {
+router.get('/monthly', async (req, res) => {
   try {
-    const entries = readMetricsLog();
+    const entries = await readMetricsLog();
     const monthly = groupByMonth(entries);
 
     // Calculate month-over-month changes
