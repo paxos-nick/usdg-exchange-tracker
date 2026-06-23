@@ -372,28 +372,34 @@ router.get('/paxg/volume', async (req, res) => {
     // Fetch PAXG and XAUT in parallel across all exchanges
     const [
       binancePaxg, binanceXaut,
-      okxPaxg, okxXaut
+      okxPaxg, okxXaut,
+      krakenPaxg, krakenXaut
     ] = await Promise.all([
       binanceService.getDailyVolume('PAXGUSDT').catch(e => { console.error('Binance PAXG:', e.message); return []; }),
       binanceService.getDailyVolume('XAUTUSDT').catch(e => { console.error('Binance XAUT:', e.message); return []; }),
       okxService.getDailyVolumeHistory('PAXG-USDT').catch(e => { console.error('OKX PAXG:', e.message); return []; }),
-      okxService.getDailyVolumeHistory('XAUT-USDT').catch(e => { console.error('OKX XAUT:', e.message); return []; })
+      okxService.getDailyVolumeHistory('XAUT-USDT').catch(e => { console.error('OKX XAUT:', e.message); return []; }),
+      krakenService.getKrakenPaxgVolume().catch(e => { console.error('Kraken PAXG:', e.message); return []; }),
+      krakenService.getKrakenXautVolume().catch(e => { console.error('Kraken XAUT:', e.message); return []; })
     ]);
 
     const EXCHANGES = [
       { key: 'binance', displayName: 'Binance' },
-      { key: 'okx',     displayName: 'OKX' }
+      { key: 'okx',     displayName: 'OKX' },
+      { key: 'kraken',  displayName: 'Kraken' }
     ];
 
     // Raw per-exchange series for each token
     const raw = {
       paxg: {
         binance: binancePaxg.map(d => ({ date: d.date, volume: d.volume })),
-        okx:     okxPaxg
+        okx:     okxPaxg,
+        kraken:  krakenPaxg
       },
       xaut: {
         binance: binanceXaut.map(d => ({ date: d.date, volume: d.volume })),
-        okx:     okxXaut
+        okx:     okxXaut,
+        kraken:  krakenXaut
       }
     };
 

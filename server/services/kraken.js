@@ -297,6 +297,37 @@ async function getOrderbook(pairSymbol) {
   };
 }
 
+// Fetch daily USD-denominated volume for a PAXG or XAUT pair on Kraken.
+// Kraken candles: [time, open, high, low, close, vwap, volume, count]
+// Volume is in base currency; multiply by close (USD price) to get USD value.
+async function getDailyVolumeUsd(krakenPairSymbol) {
+  const candles = await getDailyVolume(krakenPairSymbol);
+  return candles
+    .filter(c => c.date)
+    .map(c => ({ date: c.date, volume: c.rawVolume * c.close }));
+}
+
+// Returns merged daily PAXG USD volume across USD-denominated Kraken pairs.
+async function getKrakenPaxgVolume() {
+  const paxgCandles = await getDailyVolumeUsd('PAXGUSD');
+  return paxgCandles;
+}
+
+// Returns merged daily XAUT USD volume (XAUT/USD + XAUT/USDT).
+async function getKrakenXautVolume() {
+  const [usd, usdt] = await Promise.all([
+    getDailyVolumeUsd('XAUTUSD').catch(() => []),
+    getDailyVolumeUsd('XAUTUSDT').catch(() => [])
+  ]);
+  const byDate = new Map();
+  for (const { date, volume } of [...usd, ...usdt]) {
+    byDate.set(date, (byDate.get(date) || 0) + volume);
+  }
+  return Array.from(byDate.entries())
+    .map(([date, volume]) => ({ date, volume }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
 module.exports = {
   getUSDGPairs,
   getDailyVolume,
@@ -304,5 +335,8 @@ module.exports = {
   getPerPairVolume,
   getOrderbook,
   getPYUSDPairs,
-  getMonthlyPyusdVolume
+  getMonthlyPyusdVolume,
+  getDailyVolumeUsd,
+  getKrakenPaxgVolume,
+  getKrakenXautVolume
 };
