@@ -434,6 +434,37 @@ export function usePyusdData() {
   return { data, loading, error, lastUpdated, refetch: fetchData };
 }
 
+export function usePaxgVolume() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await fetch('/api/paxg/volume');
+      if (!response.ok) throw new Error(`Failed to fetch PAXG volume: ${response.statusText}`);
+      const result = await response.json();
+      setData(result);
+      setLastUpdated(new Date());
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    const intervalId = setInterval(fetchData, REFRESH_INTERVAL);
+    return () => clearInterval(intervalId);
+  }, [fetchData]);
+
+  return { data, loading, error, lastUpdated, refetch: fetchData };
+}
+
 export function useBinancePaxg() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
