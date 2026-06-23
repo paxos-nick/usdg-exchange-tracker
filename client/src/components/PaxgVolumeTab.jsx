@@ -163,39 +163,25 @@ export default function PaxgVolumeTab() {
         PAXG and XAUT trading volume across exchanges
       </p>
 
-      {/* Always-visible comparison stats */}
+      {/* Always-visible comparison stats — columns aligned so XAUT sits directly below PAXG */}
       <section className="wow-section">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          {[{ label: 'PAXG', stats: paxgStats, color: '#f5a623' }, { label: 'XAUT', stats: xautStats, color: '#c9d1d9' }].map(({ label, stats, color }) => (
-            <div key={label}>
-              <div style={{ color, fontWeight: 700, fontSize: 13, marginBottom: 10, letterSpacing: '0.05em' }}>{label}</div>
-              <div className="comparison-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-                <div className="comparison-card">
-                  <div className="comparison-label">30-Day Volume</div>
-                  <div className="comparison-values">
-                    <div className="comparison-current">
-                      <span className="value-label">All exchanges</span>
-                      <span className="value-number">{formatUSD(stats.total)}</span>
-                    </div>
-                  </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+          {[
+            { label: '30-Day Volume', paxg: formatUSD(paxgStats.total), xaut: formatUSD(xautStats.total), sub: 'All exchanges' },
+            { label: 'Avg Daily Volume', paxg: formatUSD(paxgStats.avg), xaut: formatUSD(xautStats.avg), sub: '30-day avg' },
+            { label: 'Peak Day (30d)', paxg: formatUSD(paxgStats.peak.v), xaut: formatUSD(xautStats.peak.v), sub: paxgStats.peak.date || '—' }
+          ].map(({ label, paxg, xaut, sub }) => (
+            <div key={label} className="comparison-card">
+              <div className="comparison-label">{label}</div>
+              <div style={{ marginTop: 6 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+                  <span style={{ color: '#f5a623', fontSize: 11, fontWeight: 600 }}>PAXG</span>
+                  <span className="value-number">{paxg}</span>
                 </div>
-                <div className="comparison-card">
-                  <div className="comparison-label">Avg Daily Volume</div>
-                  <div className="comparison-values">
-                    <div className="comparison-current">
-                      <span className="value-label">30-day avg</span>
-                      <span className="value-number">{formatUSD(stats.avg)}</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="comparison-card">
-                  <div className="comparison-label">Peak Day (30d)</div>
-                  <div className="comparison-values">
-                    <div className="comparison-current">
-                      <span className="value-label">{stats.peak.date || '—'}</span>
-                      <span className="value-number">{formatUSD(stats.peak.v)}</span>
-                    </div>
-                  </div>
+                <div style={{ height: 1, background: '#2f3542', marginBottom: 6 }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <span style={{ color: '#c9d1d9', fontSize: 11, fontWeight: 600 }}>XAUT</span>
+                  <span className="value-number">{xaut}</span>
                 </div>
               </div>
             </div>
