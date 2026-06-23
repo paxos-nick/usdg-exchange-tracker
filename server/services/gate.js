@@ -129,9 +129,24 @@ async function getOrderbook(pair) {
   };
 }
 
+// Fetch full daily USDT volume history for any Gate.io spot pair (candle[1] = USDT quote volume)
+async function getDailyVolumeUsdt(currencyPair) {
+  const response = await axios.get(`${BASE_URL}/spot/candlesticks`, {
+    params: { currency_pair: currencyPair, interval: '1d', limit: 1000 }
+  });
+  const candles = response.data || [];
+  const byDate = new Map();
+  for (const c of candles) {
+    const date = new Date(parseInt(c[0]) * 1000).toISOString().split('T')[0];
+    byDate.set(date, { date, volume: parseFloat(c[1]) });
+  }
+  return Array.from(byDate.values()).filter(d => d.volume > 0).sort((a, b) => a.date.localeCompare(b.date));
+}
+
 module.exports = {
   getUSDGPairs,
   getDailyVolume,
+  getDailyVolumeUsdt,
   getAggregatedVolume,
   getPerPairVolume,
   getOrderbook

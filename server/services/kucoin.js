@@ -161,9 +161,28 @@ async function getOrderbook(symbol) {
   };
 }
 
+// Fetch daily USDT volume for any KuCoin spot pair (candle[6] = USDT quote amount)
+// KuCoin returns max 1500 candles; use start/end to get full history in one call
+async function getDailyVolumeUsdt(symbol) {
+  const endAt  = Math.floor(Date.now() / 1000);
+  const startAt = endAt - 1500 * 86400;
+  const response = await axios.get(`${BASE_URL}/market/candles`, {
+    params: { symbol, type: '1day', startAt, endAt }
+  });
+  if (response.data.code !== '200000') throw new Error(`KuCoin API error: ${response.data.msg}`);
+  const candles = response.data.data || [];
+  const byDate = new Map();
+  for (const c of candles) {
+    const date = new Date(parseInt(c[0]) * 1000).toISOString().split('T')[0];
+    byDate.set(date, { date, volume: parseFloat(c[6]) }); // c[6] = USDT quote volume
+  }
+  return Array.from(byDate.values()).filter(d => d.volume > 0).sort((a, b) => a.date.localeCompare(b.date));
+}
+
 module.exports = {
   getUSDGPairs,
   getDailyVolume,
+  getDailyVolumeUsdt,
   getAggregatedVolume,
   getPerPairVolume,
   getOrderbook

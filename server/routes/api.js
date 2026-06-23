@@ -5,6 +5,7 @@ const gateService = require('../services/gate');
 const kucoinService = require('../services/kucoin');
 const bitmartService = require('../services/bitmart');
 const okxService = require('../services/okx');
+const bitgetService = require('../services/bitget');
 
 const cryptocomService = require('../services/cryptocom');
 const binanceService = require('../services/binance');
@@ -372,21 +373,33 @@ router.get('/paxg/volume', async (req, res) => {
     // Fetch PAXG and XAUT in parallel across all exchanges
     const [
       binancePaxg, binanceXaut,
-      okxPaxg, okxXaut,
-      krakenPaxg, krakenXaut
+      okxPaxg,     okxXaut,
+      krakenPaxg,  krakenXaut,
+      gatePaxg,    gateXaut,
+      kucoinPaxg,  kucoinXaut,
+      bitgetPaxg,  bitgetXaut
     ] = await Promise.all([
       binanceService.getDailyVolume('PAXGUSDT').catch(e => { console.error('Binance PAXG:', e.message); return []; }),
       binanceService.getDailyVolume('XAUTUSDT').catch(e => { console.error('Binance XAUT:', e.message); return []; }),
       okxService.getDailyVolumeHistory('PAXG-USDT').catch(e => { console.error('OKX PAXG:', e.message); return []; }),
       okxService.getDailyVolumeHistory('XAUT-USDT').catch(e => { console.error('OKX XAUT:', e.message); return []; }),
       krakenService.getKrakenPaxgVolume().catch(e => { console.error('Kraken PAXG:', e.message); return []; }),
-      krakenService.getKrakenXautVolume().catch(e => { console.error('Kraken XAUT:', e.message); return []; })
+      krakenService.getKrakenXautVolume().catch(e => { console.error('Kraken XAUT:', e.message); return []; }),
+      gateService.getDailyVolumeUsdt('PAXG_USDT').catch(e => { console.error('Gate PAXG:', e.message); return []; }),
+      gateService.getDailyVolumeUsdt('XAUT_USDT').catch(e => { console.error('Gate XAUT:', e.message); return []; }),
+      kucoinService.getDailyVolumeUsdt('PAXG-USDT').catch(e => { console.error('KuCoin PAXG:', e.message); return []; }),
+      kucoinService.getDailyVolumeUsdt('XAUT-USDT').catch(e => { console.error('KuCoin XAUT:', e.message); return []; }),
+      bitgetService.getDailyVolumeUsdt('PAXGUSDT').catch(e => { console.error('Bitget PAXG:', e.message); return []; }),
+      bitgetService.getDailyVolumeUsdt('XAUTUSDT').catch(e => { console.error('Bitget XAUT:', e.message); return []; })
     ]);
 
     const EXCHANGES = [
       { key: 'binance', displayName: 'Binance' },
       { key: 'okx',     displayName: 'OKX' },
-      { key: 'kraken',  displayName: 'Kraken' }
+      { key: 'kraken',  displayName: 'Kraken' },
+      { key: 'gate',    displayName: 'Gate.io' },
+      { key: 'kucoin',  displayName: 'KuCoin' },
+      { key: 'bitget',  displayName: 'Bitget' }
     ];
 
     // Raw per-exchange series for each token
@@ -394,12 +407,18 @@ router.get('/paxg/volume', async (req, res) => {
       paxg: {
         binance: binancePaxg.map(d => ({ date: d.date, volume: d.volume })),
         okx:     okxPaxg,
-        kraken:  krakenPaxg
+        kraken:  krakenPaxg,
+        gate:    gatePaxg,
+        kucoin:  kucoinPaxg,
+        bitget:  bitgetPaxg
       },
       xaut: {
         binance: binanceXaut.map(d => ({ date: d.date, volume: d.volume })),
         okx:     okxXaut,
-        kraken:  krakenXaut
+        kraken:  krakenXaut,
+        gate:    gateXaut,
+        kucoin:  kucoinXaut,
+        bitget:  bitgetXaut
       }
     };
 
