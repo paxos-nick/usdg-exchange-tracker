@@ -46,34 +46,6 @@ function formatDateLabel(s, range) {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-// Filter + aggregate daily combined-by-date data to chart rows
-function buildExchangeChartData(combined, range, activeExchanges) {
-  if (!combined?.length) return [];
-  const now = new Date();
-  const cutoff = range === '30d'
-    ? new Date(now.getTime() - 30 * 86400000)
-    : new Date(now.getTime() - 365 * 86400000);
-
-  const filtered = combined.filter(d => parseDate(d.date) >= cutoff);
-
-  if (range === '30d') {
-    return filtered.map(d => ({
-      ...d,
-      displayDate: formatDateLabel(d.date, range),
-    }));
-  }
-
-  const monthly = new Map();
-  for (const d of filtered) {
-    const key = d.date.slice(0, 7);
-    if (!monthly.has(key)) monthly.set(key, { date: `${key}-01` });
-    const row = monthly.get(key);
-    for (const ex of activeExchanges) row[ex] = (row[ex] || 0) + (d[ex] || 0);
-  }
-  return Array.from(monthly.values())
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .map(d => ({ ...d, displayDate: formatDateLabel(d.date, '1y') }));
-}
 
 // Build token chart data: sum each token across selected exchanges, keyed as 'paxg'/'xaut'
 function buildTokenChartData(paxgCombined, xautCombined, range, activeExchanges, showToken) {
@@ -117,18 +89,6 @@ function buildTokenChartData(paxgCombined, xautCombined, range, activeExchanges,
     .map(d => ({ ...d, displayDate: formatDateLabel(d.date, '1y') }));
 }
 
-function mergeBoth(paxgCombined, xautCombined, exchanges) {
-  const map = new Map();
-  for (const d of (paxgCombined || [])) {
-    map.set(d.date, { date: d.date });
-    for (const ex of exchanges) map.get(d.date)[ex] = (d[ex] || 0);
-  }
-  for (const d of (xautCombined || [])) {
-    if (!map.has(d.date)) map.set(d.date, { date: d.date });
-    for (const ex of exchanges) map.get(d.date)[ex] = (map.get(d.date)[ex] || 0) + (d[ex] || 0);
-  }
-  return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
-}
 
 function ExchangePills({ exchanges, active, onToggle, onAll, onNone }) {
   return (
@@ -182,13 +142,6 @@ function TokenPills({ token, setToken }) {
 export default function PaxgVolumeTab() {
   const { data, loading, error, lastUpdated } = usePaxgVolume();
 
-  // Chart 1: volume by exchange
-  const [c1Token, setC1Token] = useState('paxg');
-  const [c1View, setC1View]   = useState('aggregate');
-  const [c1Sel, setC1Sel]     = useState(null);
-  const [c1Range, setC1Range] = useState('30d');
-
-  // Chart 2: volume by token
   const [c2Token, setC2Token] = useState('both');
   const [c2Sel, setC2Sel]     = useState(null);
   const [c2Range, setC2Range] = useState('30d');
@@ -196,7 +149,6 @@ export default function PaxgVolumeTab() {
   const exchanges = data?.exchanges || [];
   const allKeys = exchanges.map(e => e.key);
 
-  const c1Active = useMemo(() => c1Sel ?? allKeys, [c1Sel, allKeys]);
   const c2Active = useMemo(() => c2Sel ?? allKeys, [c2Sel, allKeys]);
 
   function toggle(sel, setSel, key) {
@@ -204,20 +156,6 @@ export default function PaxgVolumeTab() {
     setSel(cur.includes(key) ? cur.filter(k => k !== key) : [...cur, key]);
   }
 
-  // Chart 1 combined data
-  const c1Combined = useMemo(() => {
-    if (!data) return [];
-    if (c1Token === 'paxg') return data.paxg?.combined || [];
-    if (c1Token === 'xaut') return data.xaut?.combined || [];
-    return mergeBoth(data.paxg?.combined, data.xaut?.combined, allKeys);
-  }, [data, c1Token, allKeys]);
-
-  const c1Data = useMemo(
-    () => buildExchangeChartData(c1Combined, c1Range, c1Active),
-    [c1Combined, c1Range, c1Active]
-  );
-
-  // Chart 2 token data
   const c2Data = useMemo(
     () => buildTokenChartData(data?.paxg?.combined, data?.xaut?.combined, c2Range, c2Active, c2Token),
     [data, c2Range, c2Active, c2Token]
@@ -272,53 +210,7 @@ export default function PaxgVolumeTab() {
         </div>
       </section>
 
-      {/* ── Chart 1: Volume by Exchange ─────────────────────────────────── */}
-      <section className="chart-section">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-          <div>
-            <h3 style={{ margin: 0 }}>Volume by Exchange</h3>
-            <p style={{ color: '#71767b', fontSize: 12, margin: '2px 0 0' }}>How much is trading on each venue</p>
-          </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <TokenPills token={c1Token} setToken={setC1Token} />
-            {['aggregate','select'].map(v => (
-              <button key={v} className={`tab-btn ${c1View === v ? 'active' : ''}`}
-                style={{ padding: '3px 10px', fontSize: 12 }} onClick={() => setC1View(v)}>
-                {v === 'aggregate' ? 'All Exchanges' : 'Select Exchanges'}
-              </button>
-            ))}
-            <RangePills range={c1Range} setRange={setC1Range} />
-          </div>
-        </div>
-
-        {c1View === 'select' && (
-          <ExchangePills exchanges={exchanges} active={c1Active}
-            onToggle={k => toggle(c1Sel, setC1Sel, k)}
-            onAll={() => setC1Sel(allKeys)} onNone={() => setC1Sel([])} />
-        )}
-
-        <div className="chart-container">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={c1Data} margin={{ top: 10, right: 30, left: 20, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2f3542" />
-              <XAxis dataKey="displayDate" stroke="#71767b" tick={{ fill: '#71767b', fontSize: 11 }} tickMargin={10} interval="preserveStartEnd" />
-              <YAxis stroke="#71767b" tick={{ fill: '#71767b', fontSize: 11 }} tickFormatter={formatUSDShort} width={70} />
-              <Tooltip {...tooltipStyle} formatter={(v, name) => [formatUSD(v), name]} />
-              <Legend wrapperStyle={{ color: '#e7e9ea' }} />
-              {c1Active.map((key, i) => {
-                const ex = exchanges.find(e => e.key === key);
-                return (
-                  <Bar key={key} dataKey={key} stackId="vol" fill={colorFor(key)}
-                    name={ex?.displayName || key}
-                    radius={i === c1Active.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]} />
-                );
-              })}
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </section>
-
-      {/* ── Chart 2: Volume by Token ─────────────────────────────────────── */}
+      {/* ── Volume by Token ──────────────────────────────────────────────── */}
       <section className="chart-section">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
           <div>
