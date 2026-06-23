@@ -7,11 +7,12 @@ import { usePaxgVolume } from '../hooks/useVolumeData';
 
 const EXCHANGE_COLORS = {
   binance: '#f5a623',
-  kraken: '#7c3aed',
-  coinbase: '#0052ff',
-  okx: '#10b981',
-  gate: '#3b82f6',
-  kucoin: '#ec4899',
+  kraken:  '#7c3aed',
+  coinbase:'#0052ff',
+  okx:     '#10b981',
+  gate:    '#3b82f6',
+  kucoin:  '#ec4899',
+  bitget:  '#00d4aa',
 };
 
 function colorFor(key) {
@@ -44,106 +45,125 @@ function formatDateLabel(s, range) {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-function filterAndAggregate(combinedByDate, range, selectedExchanges) {
-  if (!combinedByDate?.length) return [];
+function buildChartData(combined, range, activeExchanges) {
+  if (!combined?.length) return [];
   const now = new Date();
   const cutoff = range === '30d'
     ? new Date(now.getTime() - 30 * 86400000)
     : new Date(now.getTime() - 365 * 86400000);
 
-  const filtered = combinedByDate.filter(d => parseDate(d.date) >= cutoff);
+  const filtered = combined.filter(d => parseDate(d.date) >= cutoff);
 
   if (range === '30d') {
     return filtered.map(d => ({
       ...d,
       displayDate: formatDateLabel(d.date, range),
-      total: selectedExchanges.reduce((s, ex) => s + (d[ex] || 0), 0)
+      total: activeExchanges.reduce((s, ex) => s + (d[ex] || 0), 0)
     }));
   }
 
-  // Monthly aggregation
   const monthly = new Map();
   for (const d of filtered) {
     const key = d.date.slice(0, 7);
     if (!monthly.has(key)) monthly.set(key, { date: `${key}-01` });
     const row = monthly.get(key);
-    for (const ex of selectedExchanges) {
-      row[ex] = (row[ex] || 0) + (d[ex] || 0);
-    }
+    for (const ex of activeExchanges) row[ex] = (row[ex] || 0) + (d[ex] || 0);
   }
   return Array.from(monthly.values())
     .sort((a, b) => a.date.localeCompare(b.date))
     .map(d => ({
       ...d,
       displayDate: formatDateLabel(d.date, '1y'),
-      total: selectedExchanges.reduce((s, ex) => s + (d[ex] || 0), 0)
+      total: activeExchanges.reduce((s, ex) => s + (d[ex] || 0), 0)
     }));
+}
+
+// Merge two combined arrays (paxg + xaut) by date for the "Both" view
+function mergeBoth(paxgCombined, xautCombined, exchanges) {
+  const map = new Map();
+  for (const d of (paxgCombined || [])) {
+    map.set(d.date, { date: d.date });
+    for (const ex of exchanges) map.get(d.date)[ex] = (d[ex] || 0);
+  }
+  for (const d of (xautCombined || [])) {
+    if (!map.has(d.date)) map.set(d.date, { date: d.date });
+    for (const ex of exchanges) {
+      map.get(d.date)[ex] = (map.get(d.date)[ex] || 0) + (d[ex] || 0);
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
 }
 
 export default function PaxgVolumeTab() {
   const { data, loading, error, lastUpdated } = usePaxgVolume();
   const [range, setRange] = useState('30d');
-  const [view, setView] = useState('aggregate'); // 'aggregate' | 'select'
-  const [selected, setSelected] = useState(null); // null = all; initialized on first data load
+  const [view, setView] = useState('aggregate');
+  const [token, setToken] = useState('paxg');   // 'paxg' | 'xaut' | 'both'
+  const [selected, setSelected] = useState(null);
 
   const exchanges = data?.exchanges || [];
+
   const activeExchanges = useMemo(() => {
     if (!exchanges.length) return [];
-    if (selected === null) return exchanges.map(e => e.key);
-    return selected;
+    return selected ?? exchanges.map(e => e.key);
   }, [exchanges, selected]);
 
   function toggleExchange(key) {
     const current = selected ?? exchanges.map(e => e.key);
-    setSelected(
-      current.includes(key)
-        ? current.filter(k => k !== key)
-        : [...current, key]
-    );
+    setSelected(current.includes(key) ? current.filter(k => k !== key) : [...current, key]);
   }
+
+  const combined = useMemo(() => {
+    if (!data) return [];
+    const exKeys = exchanges.map(e => e.key);
+    if (token === 'paxg') return data.paxg?.combined || [];
+    if (token === 'xaut') return data.xaut?.combined || [];
+    return mergeBoth(data.paxg?.combined, data.xaut?.combined, exKeys);
+  }, [data, token, exchanges]);
+
+  const chartData = useMemo(
+    () => buildChartData(combined, range, activeExchanges),
+    [combined, range, activeExchanges]
+  );
 
   if (loading) return (
     <div className="weekly-trends">
-      <h2>PAXG Exchange Volume</h2>
-      <div className="loading">Loading PAXG volume data...</div>
+      <h2>Gold Token Exchange Volume</h2>
+      <div className="loading">Loading volume data...</div>
     </div>
   );
 
   if (error) return (
     <div className="weekly-trends">
-      <h2>PAXG Exchange Volume</h2>
+      <h2>Gold Token Exchange Volume</h2>
       <div className="error">Error: {error}</div>
     </div>
   );
 
-  if (!data?.combinedByDate?.length) return (
-    <div className="weekly-trends">
-      <h2>PAXG Exchange Volume</h2>
-      <div className="no-data">No data available.</div>
-    </div>
-  );
+  if (!data) return null;
 
-  const { combinedByDate } = data;
-  const chartData = filterAndAggregate(combinedByDate, range, activeExchanges);
-
-  // Summary stats (all exchanges, 30d)
-  const last30 = combinedByDate.slice(-30);
-  const total30d = last30.reduce((s, d) => s + (d.total || 0), 0);
+  const last30 = combined.slice(-30);
+  const total30d = last30.reduce((s, d) => s + activeExchanges.reduce((ss, ex) => ss + (d[ex] || 0), 0), 0);
   const avgDaily = total30d / 30;
-  const peakDay = last30.reduce((max, d) => d.total > max.total ? d : max, { date: '', total: 0 });
+  const peakDay = last30.reduce((max, d) => {
+    const v = activeExchanges.reduce((s, ex) => s + (d[ex] || 0), 0);
+    return v > max.v ? { date: d.date, v } : max;
+  }, { date: '', v: 0 });
+
+  const tokenLabel = token === 'paxg' ? 'PAXG' : token === 'xaut' ? 'XAUT' : 'PAXG + XAUT';
 
   return (
     <div className="weekly-trends">
-      <h2>PAXG Exchange Volume</h2>
+      <h2>Gold Token Exchange Volume</h2>
       <p style={{ color: '#71767b', marginTop: -8, marginBottom: 24 }}>
-        PAXG/USDT trading volume across exchanges
+        PAXG and XAUT trading volume across exchanges
       </p>
 
       {/* Summary cards */}
       <section className="wow-section">
         <div className="comparison-grid">
           <div className="comparison-card">
-            <div className="comparison-label">30-Day Volume</div>
+            <div className="comparison-label">30-Day Volume ({tokenLabel})</div>
             <div className="comparison-values">
               <div className="comparison-current">
                 <span className="value-label">All exchanges</span>
@@ -165,7 +185,7 @@ export default function PaxgVolumeTab() {
             <div className="comparison-values">
               <div className="comparison-current">
                 <span className="value-label">{peakDay.date || '—'}</span>
-                <span className="value-number">{formatUSD(peakDay.total)}</span>
+                <span className="value-number">{formatUSD(peakDay.v)}</span>
               </div>
             </div>
           </div>
@@ -181,74 +201,66 @@ export default function PaxgVolumeTab() {
         </div>
       </section>
 
-      {/* View + range controls */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {['aggregate', 'select'].map(v => (
-            <button
-              key={v}
-              className={`tab-btn ${view === v ? 'active' : ''}`}
-              style={{ padding: '4px 14px', fontSize: 13 }}
-              onClick={() => setView(v)}
-            >
+      {/* Controls row */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+        {/* Left: token + view toggles */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {/* Token toggle */}
+          <div style={{ display: 'flex', gap: 4, background: '#1a1f2e', borderRadius: 6, padding: 3 }}>
+            {[['paxg','PAXG'],['xaut','XAUT'],['both','Both']].map(([k, label]) => (
+              <button key={k} onClick={() => setToken(k)}
+                style={{ padding: '3px 12px', borderRadius: 4, fontSize: 12, cursor: 'pointer', border: 'none',
+                  background: token === k ? '#2f3542' : 'transparent', color: token === k ? '#e7e9ea' : '#71767b' }}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {/* View toggle */}
+          {['aggregate','select'].map(v => (
+            <button key={v} className={`tab-btn ${view === v ? 'active' : ''}`}
+              style={{ padding: '4px 14px', fontSize: 13 }} onClick={() => setView(v)}>
               {v === 'aggregate' ? 'Aggregate' : 'By Exchange'}
             </button>
           ))}
         </div>
+        {/* Right: range */}
         <div style={{ display: 'flex', gap: 8 }}>
-          {['30d', '1y'].map(r => (
-            <button
-              key={r}
-              className={`tab-btn ${range === r ? 'active' : ''}`}
-              style={{ padding: '4px 12px', fontSize: 12 }}
-              onClick={() => setRange(r)}
-            >
+          {['30d','1y'].map(r => (
+            <button key={r} className={`tab-btn ${range === r ? 'active' : ''}`}
+              style={{ padding: '4px 12px', fontSize: 12 }} onClick={() => setRange(r)}>
               {r === '30d' ? '30 Days' : '1 Year'}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Exchange selector (shown in 'select' view) */}
+      {/* Exchange selector (By Exchange view) */}
       {view === 'select' && (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
           {exchanges.map(ex => {
             const on = activeExchanges.includes(ex.key);
             return (
-              <button
-                key={ex.key}
-                onClick={() => toggleExchange(ex.key)}
-                style={{
-                  padding: '5px 14px',
-                  borderRadius: 20,
-                  fontSize: 13,
-                  cursor: 'pointer',
+              <button key={ex.key} onClick={() => toggleExchange(ex.key)}
+                style={{ padding: '5px 14px', borderRadius: 20, fontSize: 13, cursor: 'pointer',
                   border: `2px solid ${colorFor(ex.key)}`,
                   background: on ? colorFor(ex.key) : 'transparent',
-                  color: on ? '#0f1419' : colorFor(ex.key),
-                  fontWeight: 600
-                }}
-              >
+                  color: on ? '#0f1419' : colorFor(ex.key), fontWeight: 600 }}>
                 {ex.displayName}
               </button>
             );
           })}
-          <button
-            onClick={() => setSelected(exchanges.map(e => e.key))}
-            style={{ padding: '5px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer', border: '1px solid #2f3542', background: 'transparent', color: '#71767b' }}
-          >
+          <button onClick={() => setSelected(exchanges.map(e => e.key))}
+            style={{ padding: '5px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer', border: '1px solid #2f3542', background: 'transparent', color: '#71767b' }}>
             All
           </button>
-          <button
-            onClick={() => setSelected([])}
-            style={{ padding: '5px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer', border: '1px solid #2f3542', background: 'transparent', color: '#71767b' }}
-          >
+          <button onClick={() => setSelected([])}
+            style={{ padding: '5px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer', border: '1px solid #2f3542', background: 'transparent', color: '#71767b' }}>
             None
           </button>
         </div>
       )}
 
-      {/* Volume chart */}
+      {/* Chart */}
       <div className="chart-container">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} margin={{ top: 10, right: 30, left: 20, bottom: 5 }}>
@@ -264,14 +276,9 @@ export default function PaxgVolumeTab() {
             {activeExchanges.map((key, i) => {
               const ex = exchanges.find(e => e.key === key);
               return (
-                <Bar
-                  key={key}
-                  dataKey={key}
-                  stackId="vol"
-                  fill={colorFor(key)}
+                <Bar key={key} dataKey={key} stackId="vol" fill={colorFor(key)}
                   name={ex?.displayName || key}
-                  radius={i === activeExchanges.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
-                />
+                  radius={i === activeExchanges.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]} />
               );
             })}
           </BarChart>

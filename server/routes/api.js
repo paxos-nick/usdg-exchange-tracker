@@ -5,6 +5,7 @@ const gateService = require('../services/gate');
 const kucoinService = require('../services/kucoin');
 const bitmartService = require('../services/bitmart');
 const okxService = require('../services/okx');
+
 const cryptocomService = require('../services/cryptocom');
 const binanceService = require('../services/binance');
 const paxgService = require('../services/paxg');
@@ -360,41 +361,62 @@ router.get('/pyusd', async (req, res) => {
   }
 });
 
-// GET /api/paxg/volume - PAXG trading volume by exchange (daily, ~1000 days)
-// Structured to support multiple exchanges — add new sources here over time.
+// GET /api/paxg/volume - PAXG + XAUT trading volume by exchange
+// Add new exchanges by extending SOURCES below.
 router.get('/paxg/volume', async (req, res) => {
   const cacheKey = 'paxg_volume_all';
   const cached = getCached(cacheKey);
   if (cached) return res.json(cached);
 
   try {
-    const binanceVolume = await binanceService.getDailyVolume('PAXGUSDT');
+    // Fetch PAXG and XAUT in parallel across all exchanges
+    const [
+      binancePaxg, binanceXaut,
+      okxPaxg, okxXaut
+    ] = await Promise.all([
+      binanceService.getDailyVolume('PAXGUSDT').catch(e => { console.error('Binance PAXG:', e.message); return []; }),
+      binanceService.getDailyVolume('XAUTUSDT').catch(e => { console.error('Binance XAUT:', e.message); return []; }),
+      okxService.getDailyVolumeHistory('PAXG-USDT').catch(e => { console.error('OKX PAXG:', e.message); return []; }),
+      okxService.getDailyVolumeHistory('XAUT-USDT').catch(e => { console.error('OKX XAUT:', e.message); return []; })
+    ]);
 
-    const volumeByExchange = {
-      binance: binanceVolume.map(d => ({ date: d.date, volume: d.volume }))
+    const EXCHANGES = [
+      { key: 'binance', displayName: 'Binance' },
+      { key: 'okx',     displayName: 'OKX' }
+    ];
+
+    // Raw per-exchange series for each token
+    const raw = {
+      paxg: {
+        binance: binancePaxg.map(d => ({ date: d.date, volume: d.volume })),
+        okx:     okxPaxg
+      },
+      xaut: {
+        binance: binanceXaut.map(d => ({ date: d.date, volume: d.volume })),
+        okx:     okxXaut
+      }
     };
 
-    // Build combined by-date map for aggregate chart
-    const dateMap = new Map();
-    for (const [exchange, series] of Object.entries(volumeByExchange)) {
-      for (const { date, volume } of series) {
-        if (!dateMap.has(date)) dateMap.set(date, { date });
-        dateMap.get(date)[exchange] = volume;
+    // Build combined-by-date maps for charting
+    function buildCombined(byExchange) {
+      const map = new Map();
+      for (const [ex, series] of Object.entries(byExchange)) {
+        for (const { date, volume } of series) {
+          if (!map.has(date)) map.set(date, { date });
+          map.get(date)[ex] = volume;
+        }
       }
+      return Array.from(map.values())
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .map(row => ({ ...row, total: EXCHANGES.reduce((s, e) => s + (row[e.key] || 0), 0) }));
     }
-    const combinedByDate = Array.from(dateMap.values())
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .map(row => ({
-        ...row,
-        total: Object.keys(volumeByExchange).reduce((s, ex) => s + (row[ex] || 0), 0)
-      }));
 
-    const exchanges = Object.keys(volumeByExchange).map(ex => ({
-      key: ex,
-      displayName: ex.charAt(0).toUpperCase() + ex.slice(1)
-    }));
+    const data = {
+      exchanges: EXCHANGES,
+      paxg: { byExchange: raw.paxg, combined: buildCombined(raw.paxg) },
+      xaut: { byExchange: raw.xaut, combined: buildCombined(raw.xaut) }
+    };
 
-    const data = { exchanges, volumeByExchange, combinedByDate };
     setCache(cacheKey, data);
     res.json(data);
   } catch (err) {

@@ -138,9 +138,40 @@ async function getOrderbook(symbol) {
   };
 }
 
+// Fetch full daily volume history for any OKX instrument (paginates through history-candles)
+// Returns [{ date, volume }] with volume in USDT (index 6 = volCcyQuote)
+async function getDailyVolumeHistory(instId) {
+  const all = [];
+  let after = '';
+
+  for (let page = 0; page < 20; page++) {
+    const params = { instId, bar: '1D', limit: 100 };
+    if (after) params.after = after;
+
+    const response = await axios.get(`${BASE_URL}/market/history-candles`, { params });
+    if (response.data.code !== '0') throw new Error(`OKX API error: ${response.data.msg}`);
+
+    const batch = response.data.data || [];
+    if (!batch.length) break;
+
+    all.push(...batch);
+    after = batch[batch.length - 1][0]; // oldest timestamp in batch
+    await delay(200);
+  }
+
+  // Deduplicate and sort ascending
+  const byDate = new Map();
+  for (const c of all) {
+    const date = new Date(parseInt(c[0])).toISOString().split('T')[0];
+    byDate.set(date, { date, volume: parseFloat(c[6]) }); // index 6 = USDT volume
+  }
+  return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
+
 module.exports = {
   getUSDGPairs,
   getDailyVolume,
+  getDailyVolumeHistory,
   getAggregatedVolume,
   getPerPairVolume,
   getOrderbook
