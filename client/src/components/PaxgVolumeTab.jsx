@@ -142,15 +142,19 @@ export default function PaxgVolumeTab() {
 
   if (!data) return null;
 
-  const last30 = combined.slice(-30);
-  const total30d = last30.reduce((s, d) => s + activeExchanges.reduce((ss, ex) => ss + (d[ex] || 0), 0), 0);
-  const avgDaily = total30d / 30;
-  const peakDay = last30.reduce((max, d) => {
-    const v = activeExchanges.reduce((s, ex) => s + (d[ex] || 0), 0);
-    return v > max.v ? { date: d.date, v } : max;
-  }, { date: '', v: 0 });
 
-  const tokenLabel = token === 'paxg' ? 'PAXG' : token === 'xaut' ? 'XAUT' : 'PAXG + XAUT';
+  // Always-visible per-token stats (computed independently of token toggle)
+  function tokenStats(combined30) {
+    const total = combined30.reduce((s, d) => s + activeExchanges.reduce((ss, ex) => ss + (d[ex] || 0), 0), 0);
+    const avg = total / 30;
+    const peak = combined30.reduce((max, d) => {
+      const v = activeExchanges.reduce((s, ex) => s + (d[ex] || 0), 0);
+      return v > max.v ? { date: d.date, v } : max;
+    }, { date: '', v: 0 });
+    return { total, avg, peak };
+  }
+  const paxgStats = tokenStats((data.paxg?.combined || []).slice(-30));
+  const xautStats = tokenStats((data.xaut?.combined || []).slice(-30));
 
   return (
     <div className="weekly-trends">
@@ -159,47 +163,46 @@ export default function PaxgVolumeTab() {
         PAXG and XAUT trading volume across exchanges
       </p>
 
-      {/* Summary cards */}
+      {/* Always-visible comparison stats */}
       <section className="wow-section">
-        <div className="comparison-grid">
-          <div className="comparison-card">
-            <div className="comparison-label">30-Day Volume ({tokenLabel})</div>
-            <div className="comparison-values">
-              <div className="comparison-current">
-                <span className="value-label">All exchanges</span>
-                <span className="value-number">{formatUSD(total30d)}</span>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          {[{ label: 'PAXG', stats: paxgStats, color: '#f5a623' }, { label: 'XAUT', stats: xautStats, color: '#c9d1d9' }].map(({ label, stats, color }) => (
+            <div key={label}>
+              <div style={{ color, fontWeight: 700, fontSize: 13, marginBottom: 10, letterSpacing: '0.05em' }}>{label}</div>
+              <div className="comparison-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                <div className="comparison-card">
+                  <div className="comparison-label">30-Day Volume</div>
+                  <div className="comparison-values">
+                    <div className="comparison-current">
+                      <span className="value-label">All exchanges</span>
+                      <span className="value-number">{formatUSD(stats.total)}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="comparison-card">
+                  <div className="comparison-label">Avg Daily Volume</div>
+                  <div className="comparison-values">
+                    <div className="comparison-current">
+                      <span className="value-label">30-day avg</span>
+                      <span className="value-number">{formatUSD(stats.avg)}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="comparison-card">
+                  <div className="comparison-label">Peak Day (30d)</div>
+                  <div className="comparison-values">
+                    <div className="comparison-current">
+                      <span className="value-label">{stats.peak.date || '—'}</span>
+                      <span className="value-number">{formatUSD(stats.peak.v)}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-          <div className="comparison-card">
-            <div className="comparison-label">Avg Daily Volume</div>
-            <div className="comparison-values">
-              <div className="comparison-current">
-                <span className="value-label">30-day avg</span>
-                <span className="value-number">{formatUSD(avgDaily)}</span>
-              </div>
-            </div>
-          </div>
-          <div className="comparison-card">
-            <div className="comparison-label">Peak Day (30d)</div>
-            <div className="comparison-values">
-              <div className="comparison-current">
-                <span className="value-label">{peakDay.date || '—'}</span>
-                <span className="value-number">{formatUSD(peakDay.v)}</span>
-              </div>
-            </div>
-          </div>
-          <div className="comparison-card">
-            <div className="comparison-label">Exchanges Tracked</div>
-            <div className="comparison-values">
-              <div className="comparison-current">
-                <span className="value-label">Active sources</span>
-                <span className="value-number">{exchanges.length}</span>
-              </div>
-            </div>
-          </div>
+          ))}
         </div>
       </section>
+
 
       {/* Controls row */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
