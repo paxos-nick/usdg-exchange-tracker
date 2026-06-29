@@ -12,7 +12,8 @@
 
 const axios = require('axios');
 
-const RPC_URL = 'https://ethereum-rpc.publicnode.com';
+// Use dRPC free tier for archive access (PublicNode rate-limits on high backfill volume)
+const RPC_URL = 'https://eth.drpc.org';
 
 // Aave v4 CORE_HUB on Ethereum mainnet
 const CORE_HUB = '0xCca852Bc40e560adC3b1Cc58CA5b55638ce826c9';
@@ -46,6 +47,52 @@ async function rpcCall(method, params) {
 
 function hex32(n) {
   return n.toString(16).padStart(64, '0');
+}
+
+// Get current block number and timestamp for reference (used in block estimation)
+async function getCurrentBlockInfo() {
+  const blockHex = await rpcCall('eth_blockNumber', []);
+  const blockNumber = parseInt(blockHex, 16);
+  const block = await rpcCall('eth_getBlockByNumber', [blockHex, false]);
+  const timestamp = parseInt(block.timestamp, 16);
+  return { blockNumber, timestamp };
+}
+
+// Estimate the block number at the start of a given UTC date
+function estimateBlockForDate(dateStr, refBlockNumber, refTimestamp) {
+  const targetTs = Math.floor(new Date(dateStr + 'T00:00:00Z').getTime() / 1000);
+  const delta = Math.round((targetTs - refTimestamp) / 12); // ~12s avg block time
+  return Math.max(1, refBlockNumber + delta);
+}
+
+// Query total USDG debt and borrow rate at a specific block
+async function getUsdgReserveDataAtBlock(blockNumber) {
+  const blockHex = '0x' + blockNumber.toString(16);
+
+  const drawnRateHex = await rpcCall('eth_call', [
+    { to: CORE_HUB, data: SEL_GET_ASSET_DRAWN_RATE + hex32(USDG_ASSET_ID) }, blockHex
+  ]);
+  const drawnRate = BigInt('0x' + drawnRateHex.slice(2));
+  const ratePerSec = Number(drawnRate) / Number(RAY) / SECONDS_PER_YEAR;
+  const variableBorrowApy = (Math.pow(1 + ratePerSec, SECONDS_PER_YEAR) - 1) * 100;
+
+  const spokeDebts = await Promise.all(USDG_SPOKES.map(async (spoke) => {
+    try {
+      const debtHex = await rpcCall('eth_call', [
+        { to: spoke.address, data: SEL_GET_RESERVE_TOTAL_DEBT + hex32(spoke.reserveId) }, blockHex
+      ]);
+      const rawDebt = Number(BigInt('0x' + debtHex.slice(2)));
+      return { name: spoke.name, debt: rawDebt / Math.pow(10, USDG_DECIMALS) };
+    } catch {
+      return { name: spoke.name, debt: 0 };
+    }
+  }));
+
+  const totalVariableDebt = spokeDebts.reduce((s, d) => s + d.debt, 0);
+  const annualRate        = Number(drawnRate) / Number(RAY);
+  const dailyInterestCost = totalVariableDebt * annualRate / 365;
+
+  return { totalVariableDebt, variableBorrowApy, dailyInterestCost, spokeBreakdown: spokeDebts, blockNumber };
 }
 
 async function getUsdgReserveData() {
@@ -83,4 +130,9 @@ async function getUsdgReserveData() {
   };
 }
 
-module.exports = { getUsdgReserveData };
+module.exports = {
+  getUsdgReserveData,
+  getUsdgReserveDataAtBlock,
+  getCurrentBlockInfo,
+  estimateBlockForDate
+};

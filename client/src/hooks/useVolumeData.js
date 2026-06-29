@@ -434,6 +434,33 @@ export function usePyusdData() {
   return { data, loading, error, lastUpdated, refetch: fetchData };
 }
 
+export function useAaveUsdgHistory() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await fetch('/api/aave/usdg/history');
+      if (!response.ok) throw new Error(`Failed to fetch Aave history: ${response.statusText}`);
+      const result = await response.json();
+      setData(result);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  return { data, loading, error, refetch: fetchData };
+}
+
 export function useAaveUsdg() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);

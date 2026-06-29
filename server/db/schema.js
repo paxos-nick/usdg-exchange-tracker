@@ -123,6 +123,19 @@ const SCHEMA_SQL = `
     ON depth_snapshots (snapped_at DESC);
   CREATE INDEX IF NOT EXISTS idx_depth_exchange_pair_time
     ON depth_snapshots (exchange, pair, snapped_at DESC);
+
+  CREATE TABLE IF NOT EXISTS aave_usdg_history (
+    id              SERIAL PRIMARY KEY,
+    snapshot_date   DATE NOT NULL UNIQUE,
+    total_debt      NUMERIC(24,6) NOT NULL,
+    borrow_apy      NUMERIC(10,6) NOT NULL,
+    daily_interest  NUMERIC(20,6) NOT NULL,
+    block_number    BIGINT NOT NULL,
+    spoke_breakdown JSONB,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_aave_usdg_date ON aave_usdg_history (snapshot_date DESC);
 `;
 
 async function setupDatabase() {

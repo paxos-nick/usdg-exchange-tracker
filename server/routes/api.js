@@ -524,6 +524,22 @@ router.get('/binance/paxg/depth-history', async (req, res) => {
   }
 });
 
+// GET /api/aave/usdg/history - Historical daily USDG Aave v4 borrow data from Postgres
+router.get('/aave/usdg/history', async (req, res) => {
+  try {
+    const result = await dbPool.query(
+      `SELECT snapshot_date::text AS date, total_debt::float, borrow_apy::float,
+              daily_interest::float, spoke_breakdown
+       FROM aave_usdg_history
+       ORDER BY snapshot_date ASC`
+    );
+    res.json({ history: result.rows });
+  } catch (err) {
+    console.error('Error fetching Aave USDG history:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/aave/usdg - USDG Aave v4 borrowing data (60s cache)
 const AAVE_CACHE_TTL = 60 * 1000; // 60 seconds
 router.get('/aave/usdg', async (req, res) => {

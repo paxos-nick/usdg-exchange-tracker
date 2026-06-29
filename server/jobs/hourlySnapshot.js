@@ -4,7 +4,8 @@ const orcaService = require('../services/orca');
 const curveService = require('../services/curve');
 const kaminoService = require('../services/kamino');
 const aaveService = require('../services/aave');
-const paxgService = require('../services/paxg');
+const paxgService  = require('../services/paxg');
+const aaveV4Service = require('../services/aaveV4');
 const { fetchUsdgDepth } = require('../services/depthFetcher');
 const binanceService = require('../services/binance');
 const { calculateDepthMetrics } = require('../utils/depthCalculator');
@@ -128,6 +129,30 @@ async function runSnapshot() {
         console.log(`[Snapshot] PAXG supply logged: ${supply.toFixed(2)} tokens (block ${blockNumber})`);
       } catch (err) {
         console.error('[Snapshot] Failed to log PAXG supply:', err.message);
+      }
+
+      // Log today's USDG Aave v4 borrow data
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        const { blockNumber: refBlock, timestamp: refTs } = await aaveV4Service.getCurrentBlockInfo();
+        const blockNum = aaveV4Service.estimateBlockForDate(today, refBlock, refTs);
+        const aaveData = await aaveV4Service.getUsdgReserveDataAtBlock(blockNum);
+        await pool.query(
+          `INSERT INTO aave_usdg_history
+             (snapshot_date, total_debt, borrow_apy, daily_interest, block_number, spoke_breakdown)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           ON CONFLICT (snapshot_date) DO UPDATE
+             SET total_debt = EXCLUDED.total_debt,
+                 borrow_apy = EXCLUDED.borrow_apy,
+                 daily_interest = EXCLUDED.daily_interest,
+                 block_number = EXCLUDED.block_number,
+                 spoke_breakdown = EXCLUDED.spoke_breakdown`,
+          [today, aaveData.totalVariableDebt, aaveData.variableBorrowApy,
+           aaveData.dailyInterestCost, blockNum, JSON.stringify(aaveData.spokeBreakdown)]
+        );
+        console.log(`[Snapshot] Aave v4 USDG logged: $${(aaveData.totalVariableDebt / 1e6).toFixed(2)}M @ ${aaveData.variableBorrowApy.toFixed(2)}% APY`);
+      } catch (err) {
+        console.error('[Snapshot] Failed to log Aave v4 USDG:', err.message);
       }
     }
 
