@@ -10,6 +10,7 @@ const bitgetService = require('../services/bitget');
 const cryptocomService = require('../services/cryptocom');
 const binanceService = require('../services/binance');
 const paxgService = require('../services/paxg');
+const aaveV4Service = require('../services/aaveV4');
 const dbPool = require('../db/pool');
 
 const router = express.Router();
@@ -519,6 +520,23 @@ router.get('/binance/paxg/depth-history', async (req, res) => {
     res.json({ rows });
   } catch (err) {
     console.error('Error fetching Binance depth history:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/aave/usdg - USDG Aave v4 borrowing data (60s cache)
+const AAVE_CACHE_TTL = 60 * 1000; // 60 seconds
+router.get('/aave/usdg', async (req, res) => {
+  const cacheKey = 'aave_usdg_v4';
+  const entry = cache.get(cacheKey);
+  if (entry && Date.now() - entry.timestamp < AAVE_CACHE_TTL) return res.json(entry.data);
+
+  try {
+    const data = await aaveV4Service.getUsdgReserveData();
+    cache.set(cacheKey, { data, timestamp: Date.now() });
+    res.json(data);
+  } catch (err) {
+    console.error('Error fetching Aave v4 USDG data:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

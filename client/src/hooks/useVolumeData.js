@@ -434,6 +434,37 @@ export function usePyusdData() {
   return { data, loading, error, lastUpdated, refetch: fetchData };
 }
 
+export function useAaveUsdg() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await fetch('/api/aave/usdg');
+      if (!response.ok) throw new Error(`Failed to fetch Aave v4 data: ${response.statusText}`);
+      const result = await response.json();
+      setData(result);
+      setLastUpdated(new Date());
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    const intervalId = setInterval(fetchData, 60 * 1000); // 60s refresh
+    return () => clearInterval(intervalId);
+  }, [fetchData]);
+
+  return { data, loading, error, lastUpdated, refetch: fetchData };
+}
+
 export function usePaxgVolume() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
