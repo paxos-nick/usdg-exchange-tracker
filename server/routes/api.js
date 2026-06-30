@@ -11,6 +11,7 @@ const cryptocomService = require('../services/cryptocom');
 const binanceService = require('../services/binance');
 const paxgService = require('../services/paxg');
 const aaveV4Service = require('../services/aaveV4');
+const merklService  = require('../services/merkl');
 const dbPool = require('../db/pool');
 
 const router = express.Router();
@@ -524,18 +525,34 @@ router.get('/binance/paxg/depth-history', async (req, res) => {
   }
 });
 
-// GET /api/aave/usdg/history - Historical daily USDG Aave v4 borrow data from Postgres
+// GET /api/aave/usdg/history - Historical daily USDG Aave v4 borrow + incentive data
 router.get('/aave/usdg/history', async (req, res) => {
   try {
     const result = await dbPool.query(
       `SELECT snapshot_date::text AS date, total_debt::float, borrow_apy::float,
-              daily_interest::float, spoke_breakdown
+              daily_interest::float, spoke_breakdown,
+              merkl_daily_rewards::float AS merkl_daily_rewards
        FROM aave_usdg_history
        ORDER BY snapshot_date ASC`
     );
     res.json({ history: result.rows });
   } catch (err) {
     console.error('Error fetching Aave USDG history:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/aave/usdg/merkl - Live Merkl incentive data (5-minute cache)
+router.get('/aave/usdg/merkl', async (req, res) => {
+  const cacheKey = 'aave_usdg_merkl';
+  const entry = cache.get(cacheKey);
+  if (entry && Date.now() - entry.timestamp < 5 * 60 * 1000) return res.json(entry.data);
+  try {
+    const data = await merklService.getUsdgDailyRewards();
+    cache.set(cacheKey, { data, timestamp: Date.now() });
+    res.json(data);
+  } catch (err) {
+    console.error('Error fetching Merkl data:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

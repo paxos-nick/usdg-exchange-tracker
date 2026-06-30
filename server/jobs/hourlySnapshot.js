@@ -4,8 +4,9 @@ const orcaService = require('../services/orca');
 const curveService = require('../services/curve');
 const kaminoService = require('../services/kamino');
 const aaveService = require('../services/aave');
-const paxgService  = require('../services/paxg');
+const paxgService   = require('../services/paxg');
 const aaveV4Service = require('../services/aaveV4');
+const merklService  = require('../services/merkl');
 const { fetchUsdgDepth } = require('../services/depthFetcher');
 const binanceService = require('../services/binance');
 const { calculateDepthMetrics } = require('../utils/depthCalculator');
@@ -137,20 +138,30 @@ async function runSnapshot() {
         const { blockNumber: refBlock, timestamp: refTs } = await aaveV4Service.getCurrentBlockInfo();
         const blockNum = aaveV4Service.estimateBlockForDate(today, refBlock, refTs);
         const aaveData = await aaveV4Service.getUsdgReserveDataAtBlock(blockNum);
-        await pool.query(
+        // Also fetch Merkl daily incentive rewards
+      let merklRewards = null;
+      try {
+        const merklData = await merklService.getUsdgDailyRewards();
+        merklRewards = merklData.totalDailyRewards;
+      } catch (err) {
+        console.error('[Snapshot] Merkl fetch failed:', err.message);
+      }
+
+      await pool.query(
           `INSERT INTO aave_usdg_history
-             (snapshot_date, total_debt, borrow_apy, daily_interest, block_number, spoke_breakdown)
-           VALUES ($1, $2, $3, $4, $5, $6)
+             (snapshot_date, total_debt, borrow_apy, daily_interest, block_number, spoke_breakdown, merkl_daily_rewards)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
            ON CONFLICT (snapshot_date) DO UPDATE
              SET total_debt = EXCLUDED.total_debt,
                  borrow_apy = EXCLUDED.borrow_apy,
                  daily_interest = EXCLUDED.daily_interest,
                  block_number = EXCLUDED.block_number,
-                 spoke_breakdown = EXCLUDED.spoke_breakdown`,
+                 spoke_breakdown = EXCLUDED.spoke_breakdown,
+                 merkl_daily_rewards = EXCLUDED.merkl_daily_rewards`,
           [today, aaveData.totalVariableDebt, aaveData.variableBorrowApy,
-           aaveData.dailyInterestCost, blockNum, JSON.stringify(aaveData.spokeBreakdown)]
+           aaveData.dailyInterestCost, blockNum, JSON.stringify(aaveData.spokeBreakdown), merklRewards]
         );
-        console.log(`[Snapshot] Aave v4 USDG logged: $${(aaveData.totalVariableDebt / 1e6).toFixed(2)}M @ ${aaveData.variableBorrowApy.toFixed(2)}% APY`);
+        console.log(`[Snapshot] Aave v4 USDG logged: $${(aaveData.totalVariableDebt / 1e6).toFixed(2)}M @ ${aaveData.variableBorrowApy.toFixed(2)}% APY, Merkl rewards: $${merklRewards?.toFixed(0) || 'n/a'}/day`);
       } catch (err) {
         console.error('[Snapshot] Failed to log Aave v4 USDG:', err.message);
       }

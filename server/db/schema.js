@@ -136,6 +136,9 @@ const SCHEMA_SQL = `
   );
 
   CREATE INDEX IF NOT EXISTS idx_aave_usdg_date ON aave_usdg_history (snapshot_date DESC);
+
+  ALTER TABLE aave_usdg_history
+    ADD COLUMN IF NOT EXISTS merkl_daily_rewards NUMERIC(20,6);
 `;
 
 async function setupDatabase() {
