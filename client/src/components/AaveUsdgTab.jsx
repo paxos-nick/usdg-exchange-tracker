@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import {
-  ComposedChart, AreaChart, Area, Line,
+  ComposedChart, Area, Line,
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, Bar, BarChart
 } from 'recharts';
@@ -42,10 +43,78 @@ function StatCard({ label, value, sub, color }) {
   );
 }
 
+const INTEREST_COLOR = '#f59e0b';
+const MERKL_COLOR    = '#b6509e';
+
 const tooltipBase = {
   contentStyle: { backgroundColor: '#1a1f2e', border: '1px solid #2f3542', borderRadius: 8, color: '#e7e9ea' },
   labelStyle: { color: '#71767b' }
 };
+
+const METRICS = [
+  { key: 'dailyInterest', label: 'Borrow Interest Paid', color: INTEREST_COLOR },
+  { key: 'merklRewards',  label: 'Merkl Supply Incentives', color: MERKL_COLOR },
+];
+
+function DailyFlowsChart({ chartData }) {
+  const [active, setActive] = useState(new Set(['dailyInterest', 'merklRewards']));
+
+  const toggle = key => setActive(prev => {
+    const next = new Set(prev);
+    next.has(key) ? next.delete(key) : next.add(key);
+    return next;
+  });
+
+  const tickFmt = v => '$' + (v >= 1000 ? (v / 1000).toFixed(1) + 'K' : v.toFixed(0));
+
+  return (
+    <section className="chart-section">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <h3 style={{ margin: 0 }}>Daily Interest Paid vs Supply Incentives</h3>
+          <p style={{ color: '#71767b', fontSize: 12, margin: '2px 0 0' }}>
+            Borrow interest accrued vs Merkl rewards distributed per day
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {METRICS.map(m => {
+            const on = active.has(m.key);
+            return (
+              <button key={m.key} onClick={() => toggle(m.key)}
+                style={{ padding: '4px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
+                  border: `2px solid ${m.color}`,
+                  background: on ? m.color : 'transparent',
+                  color: on ? '#0f1419' : m.color, fontWeight: 600 }}>
+                {m.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="chart-container">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartData} margin={{ top: 10, right: 30, left: 20, bottom: 5 }} barCategoryGap="20%">
+            <CartesianGrid strokeDasharray="3 3" stroke="#2f3542" />
+            <XAxis dataKey="displayDate" stroke="#71767b" tick={{ fill: '#71767b', fontSize: 11 }} tickMargin={10} interval="preserveStartEnd" />
+            <YAxis stroke="#71767b" tick={{ fill: '#71767b', fontSize: 11 }} tickFormatter={tickFmt} width={70} />
+            <Tooltip
+              contentStyle={{ backgroundColor: '#1a1f2e', border: '1px solid #2f3542', borderRadius: 8, color: '#e7e9ea' }}
+              labelStyle={{ color: '#71767b' }}
+              formatter={(v, name) => [v != null ? formatUSD(v) : '—', name]}
+            />
+            <Legend wrapperStyle={{ color: '#e7e9ea' }} />
+            {active.has('dailyInterest') && (
+              <Bar dataKey="dailyInterest" fill={INTEREST_COLOR} name="Borrow Interest Paid" radius={[3, 3, 0, 0]} />
+            )}
+            {active.has('merklRewards') && (
+              <Bar dataKey="merklRewards" fill={MERKL_COLOR} name="Merkl Supply Incentives" radius={[3, 3, 0, 0]} />
+            )}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </section>
+  );
+}
 
 function CombinedTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
@@ -71,6 +140,7 @@ export default function AaveUsdgTab() {
     totalDebt: row.total_debt,
     borrowApy: parseFloat(row.borrow_apy),
     dailyInterest: row.daily_interest,
+    merklRewards: row.merkl_daily_rewards ?? null,
   }));
 
   if (liveLoading && histLoading) return (
@@ -159,25 +229,8 @@ export default function AaveUsdgTab() {
             </div>
           </section>
 
-          {/* Chart 2: Daily interest cost */}
-          <section className="chart-section">
-            <h3>Daily Borrow Interest Paid</h3>
-            <p style={{ color: '#71767b', fontSize: 12, marginTop: -8, marginBottom: 12 }}>
-              totalDebt × annualRate ÷ 365 — interest accrued per day across all borrowers
-            </p>
-            <div className="chart-container">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 10, right: 30, left: 20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2f3542" />
-                  <XAxis dataKey="displayDate" stroke="#71767b" tick={{ fill: '#71767b', fontSize: 11 }} tickMargin={10} interval="preserveStartEnd" />
-                  <YAxis stroke="#71767b" tick={{ fill: '#71767b', fontSize: 11 }}
-                    tickFormatter={v => '$' + (v >= 1000 ? (v/1000).toFixed(1) + 'K' : v.toFixed(0))} width={70} />
-                  <Tooltip {...tooltipBase} formatter={v => [formatUSD(v), 'Daily Interest']} />
-                  <Bar dataKey="dailyInterest" fill="#f59e0b" radius={[3, 3, 0, 0]} name="Daily Interest" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </section>
+          {/* Chart 2: Daily flows — interest paid + incentives, toggleable */}
+          <DailyFlowsChart chartData={chartData} />
         </>
       )}
 
