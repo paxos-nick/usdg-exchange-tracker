@@ -30,8 +30,9 @@ const USDG_SPOKES = [
 ];
 
 // Selectors (keccak256 of function signatures)
-const SEL_GET_ASSET_DRAWN_RATE   = '0x8accc4a3'; // getAssetDrawnRate(uint256)
-const SEL_GET_RESERVE_TOTAL_DEBT = '0x1cdc762c'; // getReserveTotalDebt(uint256)
+const SEL_GET_ASSET_DRAWN_RATE      = '0x8accc4a3'; // getAssetDrawnRate(uint256)
+const SEL_GET_RESERVE_TOTAL_DEBT    = '0x1cdc762c'; // getReserveTotalDebt(uint256)
+const SEL_GET_RESERVE_SUPPLIED      = '0x2fd00527'; // getReserveSuppliedAssets(uint256)
 
 const RAY             = BigInt('1000000000000000000000000000'); // 1e27
 const SECONDS_PER_YEAR = 31536000;
@@ -92,7 +93,20 @@ async function getUsdgReserveDataAtBlock(blockNumber) {
   const annualRate        = Number(drawnRate) / Number(RAY);
   const dailyInterestCost = totalVariableDebt * annualRate / 365;
 
-  return { totalVariableDebt, variableBorrowApy, dailyInterestCost, spokeBreakdown: spokeDebts, blockNumber };
+  // Supply TVL — only MAIN spoke has meaningful USDG supply currently
+  let totalSupply = 0;
+  try {
+    const supplyHex = await rpcCall('eth_call', [
+      { to: USDG_SPOKES[0].address, data: SEL_GET_RESERVE_SUPPLIED + hex32(USDG_SPOKES[0].reserveId) }, blockHex
+    ]);
+    totalSupply = Number(BigInt('0x' + supplyHex.slice(2))) / Math.pow(10, USDG_DECIMALS);
+  } catch { /* ignore */ }
+
+  // Organic supply APY = borrowAPY × utilization (liquidityFee = 0)
+  const utilization = totalSupply > 0 ? totalVariableDebt / totalSupply : 0;
+  const supplyApy   = variableBorrowApy * utilization;
+
+  return { totalVariableDebt, variableBorrowApy, dailyInterestCost, spokeBreakdown: spokeDebts, blockNumber, totalSupply, supplyApy };
 }
 
 async function getUsdgReserveData() {

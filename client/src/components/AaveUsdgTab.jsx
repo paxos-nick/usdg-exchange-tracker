@@ -56,6 +56,81 @@ const METRICS = [
   { key: 'merklRewards',  label: 'Merkl Supply Incentives', color: MERKL_COLOR },
 ];
 
+const SUPPLY_COLOR = '#3b82f6';
+
+function SupplyChart({ chartData }) {
+  const [lookback, setLookback] = useState(30);
+
+  const filtered = lookback === null ? chartData : chartData.slice(-lookback);
+  const hasSupply = filtered.some(d => d.totalSupply != null);
+
+  return (
+    <section className="chart-section">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <h3 style={{ margin: 0 }}>Supply TVL & Organic Supply Rate</h3>
+          <p style={{ color: '#71767b', fontSize: 12, margin: '2px 0 0' }}>
+            Total USDG supplied (left) and organic supply APY = borrowAPY × utilization (right)
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 4, background: '#1a1f2e', borderRadius: 6, padding: 3 }}>
+          {LOOKBACKS.map(({ label, days }) => (
+            <button key={label} onClick={() => setLookback(days)}
+              style={{ padding: '3px 10px', borderRadius: 4, fontSize: 12, cursor: 'pointer', border: 'none',
+                background: lookback === days ? '#2f3542' : 'transparent',
+                color: lookback === days ? '#e7e9ea' : '#71767b' }}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {!hasSupply ? (
+        <div className="no-data" style={{ padding: 20 }}>Supply data is being populated — check back shortly.</div>
+      ) : (
+        <div className="chart-container">
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={filtered} margin={{ top: 10, right: 60, left: 20, bottom: 5 }}>
+              <defs>
+                <linearGradient id="supplyGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%"  stopColor={SUPPLY_COLOR} stopOpacity={0.2} />
+                  <stop offset="95%" stopColor={SUPPLY_COLOR} stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#2f3542" />
+              <XAxis dataKey="displayDate" stroke="#71767b" tick={{ fill: '#71767b', fontSize: 11 }} tickMargin={10} interval="preserveStartEnd" />
+              <YAxis yAxisId="supply" orientation="left"
+                stroke={SUPPLY_COLOR} tick={{ fill: SUPPLY_COLOR, fontSize: 11 }}
+                tickFormatter={formatUSDShort} width={75}
+                label={{ value: 'Supplied', angle: -90, position: 'insideLeft', fill: SUPPLY_COLOR, fontSize: 11, dx: -8 }} />
+              <YAxis yAxisId="apy" orientation="right"
+                stroke={APY_GREEN} tick={{ fill: APY_GREEN, fontSize: 11 }}
+                tickFormatter={v => v.toFixed(2) + '%'} width={60}
+                label={{ value: 'Supply APY', angle: 90, position: 'insideRight', fill: APY_GREEN, fontSize: 11, dx: 10 }} />
+              <Tooltip
+                contentStyle={{ backgroundColor: '#1a1f2e', border: '1px solid #2f3542', borderRadius: 8, color: '#e7e9ea' }}
+                labelStyle={{ color: '#71767b' }}
+                formatter={(v, name) => {
+                  if (name === 'totalSupply') return [v != null ? formatUSD(v) : '—', 'Supply TVL'];
+                  if (name === 'supplyApy')  return [v != null ? v.toFixed(4) + '%' : '—', 'Supply APY'];
+                  return [v, name];
+                }}
+              />
+              <Legend wrapperStyle={{ color: '#e7e9ea' }}
+                formatter={v => v === 'totalSupply' ? 'Supply TVL' : 'Supply APY'} />
+              <Area yAxisId="supply" type="monotone" dataKey="totalSupply"
+                stroke={SUPPLY_COLOR} strokeWidth={2} fill="url(#supplyGrad)"
+                dot={false} activeDot={{ r: 4, fill: SUPPLY_COLOR, strokeWidth: 0 }} name="totalSupply" />
+              <Line yAxisId="apy" type="monotone" dataKey="supplyApy"
+                stroke={APY_GREEN} strokeWidth={2} dot={false}
+                activeDot={{ r: 4, fill: APY_GREEN, strokeWidth: 0 }} name="supplyApy" />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </section>
+  );
+}
+
 const LOOKBACKS = [
   { label: '7 Days',  days: 7 },
   { label: '30 Days', days: 30 },
@@ -165,6 +240,8 @@ export default function AaveUsdgTab() {
     borrowApy: parseFloat(row.borrow_apy),
     dailyInterest: row.daily_interest,
     merklRewards: row.merkl_daily_rewards ?? null,
+    totalSupply: row.total_supply ?? null,
+    supplyApy: row.supply_apy != null ? parseFloat(row.supply_apy) : null,
   }));
 
   if (liveLoading && histLoading) return (
@@ -255,6 +332,9 @@ export default function AaveUsdgTab() {
 
           {/* Chart 2: Daily flows — interest paid + incentives, toggleable */}
           <DailyFlowsChart chartData={chartData} />
+
+          {/* Chart 3: Supply amount + supply rate */}
+          <SupplyChart chartData={chartData} />
         </>
       )}
 

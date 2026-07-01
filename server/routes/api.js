@@ -531,7 +531,9 @@ router.get('/aave/usdg/history', async (req, res) => {
     const result = await dbPool.query(
       `SELECT snapshot_date::text AS date, total_debt::float, borrow_apy::float,
               daily_interest::float, spoke_breakdown,
-              merkl_daily_rewards::float AS merkl_daily_rewards
+              merkl_daily_rewards::float AS merkl_daily_rewards,
+              total_supply::float AS total_supply,
+              supply_apy::float AS supply_apy
        FROM aave_usdg_history
        ORDER BY snapshot_date ASC`
     );

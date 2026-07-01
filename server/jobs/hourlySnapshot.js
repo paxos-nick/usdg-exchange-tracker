@@ -149,17 +149,16 @@ async function runSnapshot() {
 
       await pool.query(
           `INSERT INTO aave_usdg_history
-             (snapshot_date, total_debt, borrow_apy, daily_interest, block_number, spoke_breakdown, merkl_daily_rewards)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+             (snapshot_date, total_debt, borrow_apy, daily_interest, block_number, spoke_breakdown, merkl_daily_rewards, total_supply, supply_apy)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
            ON CONFLICT (snapshot_date) DO UPDATE
-             SET total_debt = EXCLUDED.total_debt,
-                 borrow_apy = EXCLUDED.borrow_apy,
-                 daily_interest = EXCLUDED.daily_interest,
-                 block_number = EXCLUDED.block_number,
-                 spoke_breakdown = EXCLUDED.spoke_breakdown,
-                 merkl_daily_rewards = EXCLUDED.merkl_daily_rewards`,
+             SET total_debt=EXCLUDED.total_debt, borrow_apy=EXCLUDED.borrow_apy,
+                 daily_interest=EXCLUDED.daily_interest, block_number=EXCLUDED.block_number,
+                 spoke_breakdown=EXCLUDED.spoke_breakdown, merkl_daily_rewards=EXCLUDED.merkl_daily_rewards,
+                 total_supply=EXCLUDED.total_supply, supply_apy=EXCLUDED.supply_apy`,
           [today, aaveData.totalVariableDebt, aaveData.variableBorrowApy,
-           aaveData.dailyInterestCost, blockNum, JSON.stringify(aaveData.spokeBreakdown), merklRewards]
+           aaveData.dailyInterestCost, blockNum, JSON.stringify(aaveData.spokeBreakdown),
+           merklRewards, aaveData.totalSupply, aaveData.supplyApy]
         );
         console.log(`[Snapshot] Aave v4 USDG logged: $${(aaveData.totalVariableDebt / 1e6).toFixed(2)}M @ ${aaveData.variableBorrowApy.toFixed(2)}% APY, Merkl rewards: $${merklRewards?.toFixed(0) || 'n/a'}/day`);
       } catch (err) {

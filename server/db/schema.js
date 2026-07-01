@@ -139,6 +139,12 @@ const SCHEMA_SQL = `
 
   ALTER TABLE aave_usdg_history
     ADD COLUMN IF NOT EXISTS merkl_daily_rewards NUMERIC(20,6);
+
+  ALTER TABLE aave_usdg_history
+    ADD COLUMN IF NOT EXISTS total_supply NUMERIC(24,6);
+
+  ALTER TABLE aave_usdg_history
+    ADD COLUMN IF NOT EXISTS supply_apy NUMERIC(10,6);
 `;
 
 async function setupDatabase() {
