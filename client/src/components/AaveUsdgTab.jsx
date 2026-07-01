@@ -56,14 +56,26 @@ const METRICS = [
   { key: 'merklRewards',  label: 'Merkl Supply Incentives', color: MERKL_COLOR },
 ];
 
+const LOOKBACKS = [
+  { label: '7 Days',  days: 7 },
+  { label: '30 Days', days: 30 },
+  { label: '90 Days', days: 90 },
+  { label: 'All',     days: null },
+];
+
 function DailyFlowsChart({ chartData }) {
   const [active, setActive] = useState(new Set(['dailyInterest', 'merklRewards']));
+  const [lookback, setLookback] = useState(30);
 
   const toggle = key => setActive(prev => {
     const next = new Set(prev);
     next.has(key) ? next.delete(key) : next.add(key);
     return next;
   });
+
+  const filtered = lookback === null
+    ? chartData
+    : chartData.slice(-lookback);
 
   const tickFmt = v => '$' + (v >= 1000 ? (v / 1000).toFixed(1) + 'K' : v.toFixed(0));
 
@@ -76,12 +88,24 @@ function DailyFlowsChart({ chartData }) {
             Borrow interest accrued vs Merkl rewards distributed per day
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          {/* Lookback toggles */}
+          <div style={{ display: 'flex', gap: 4, background: '#1a1f2e', borderRadius: 6, padding: 3 }}>
+            {LOOKBACKS.map(({ label, days }) => (
+              <button key={label} onClick={() => setLookback(days)}
+                style={{ padding: '3px 10px', borderRadius: 4, fontSize: 12, cursor: 'pointer', border: 'none',
+                  background: lookback === days ? '#2f3542' : 'transparent',
+                  color: lookback === days ? '#e7e9ea' : '#71767b' }}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {/* Metric toggles */}
           {METRICS.map(m => {
             const on = active.has(m.key);
             return (
               <button key={m.key} onClick={() => toggle(m.key)}
-                style={{ padding: '4px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
+                style={{ padding: '4px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
                   border: `2px solid ${m.color}`,
                   background: on ? m.color : 'transparent',
                   color: on ? '#0f1419' : m.color, fontWeight: 600 }}>
@@ -93,7 +117,7 @@ function DailyFlowsChart({ chartData }) {
       </div>
       <div className="chart-container">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={chartData} margin={{ top: 10, right: 30, left: 20, bottom: 5 }} barCategoryGap="20%">
+          <BarChart data={filtered} margin={{ top: 10, right: 30, left: 20, bottom: 5 }} barCategoryGap="20%">
             <CartesianGrid strokeDasharray="3 3" stroke="#2f3542" />
             <XAxis dataKey="displayDate" stroke="#71767b" tick={{ fill: '#71767b', fontSize: 11 }} tickMargin={10} interval="preserveStartEnd" />
             <YAxis stroke="#71767b" tick={{ fill: '#71767b', fontSize: 11 }} tickFormatter={tickFmt} width={70} />
