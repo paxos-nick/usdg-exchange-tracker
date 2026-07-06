@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   ComposedChart, Area, Line,
   XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Legend, Bar
+  ResponsiveContainer, Legend, ReferenceLine
 } from 'recharts';
 import { useAaveUsdg, useAaveUsdgHistory } from '../hooks/useVolumeData';
 
@@ -48,6 +48,13 @@ const MERKL_COLOR    = '#b6509e';
 const NIM_COLOR      = '#8b5cf6'; // NIM-funded portion of incentives
 const OOP_COLOR      = '#ec4899'; // out-of-pocket incentive spend
 
+// Demand-vs-Subsidy palette
+const DEMAND_COLOR   = '#22d3ee'; // borrower interest (organic demand) — the hero line
+const NIM_SUB_COLOR  = '#8b5cf6'; // sustainable subsidy (NIM share)
+const OOP_SUB_COLOR  = '#fb923c'; // unsustainable subsidy (out-of-pocket)
+const DEFICIT_COLOR  = '#ef4444'; // subsidy exceeds demand (bootstrapping)
+const SURPLUS_COLOR  = '#22c55e'; // demand exceeds subsidy (self-sustaining)
+
 // Revenue-share rate earned on idle USDG sitting on Aave (supply TVL − borrow TVL).
 // This "NIM share" funds part of the Merkl incentives; anything above it is out-of-pocket.
 const NIM_APY = 0.031; // 3.1% APY
@@ -56,11 +63,6 @@ const tooltipBase = {
   contentStyle: { backgroundColor: '#1a1f2e', border: '1px solid #2f3542', borderRadius: 8, color: '#e7e9ea' },
   labelStyle: { color: '#71767b' }
 };
-
-const METRICS = [
-  { key: 'dailyInterest', label: 'Borrow Interest Paid', color: INTEREST_COLOR },
-  { key: 'incentives',    label: 'Supply Incentives', color: MERKL_COLOR },
-];
 
 // CSV export: column header + accessor for each field of the daily dataset.
 const CSV_COLUMNS = [
@@ -219,110 +221,149 @@ function TipRow({ color, label, value, dim }) {
   );
 }
 
-function FlowsTooltip({ active, payload, label, showInterest, showIncentives }) {
+function LegendChip({ color, line, label }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <span style={{ display: 'inline-block', width: line ? 14 : 10, height: line ? 3 : 10,
+        borderRadius: line ? 2 : 2, background: color }} />
+      {label}
+    </span>
+  );
+}
+
+function DsTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
-  const row = payload[0].payload;
-  const hasOOP = row.outOfPocket != null; // out-of-pocket is only tracked once Merkl data exists
-  const total = (row.nimRevenue || 0) + (row.outOfPocket || 0);
+  const r = payload[0].payload;
+  if (r.demand == null || r.totalSubsidy == null) return null;
+  const net = r.demand - r.totalSubsidy;
+  const coverage = r.totalSubsidy ? (r.demand / r.totalSubsidy) * 100 : null;
+  const hasOOP = r.outOfPocket != null;
+  const positive = net >= 0;
 
   return (
-    <div style={{ ...tooltipBase.contentStyle, padding: '10px 14px', minWidth: 236 }}>
+    <div style={{ ...tooltipBase.contentStyle, padding: '10px 14px', minWidth: 258 }}>
       <div style={{ color: '#71767b', marginBottom: 8, fontSize: 12 }}>{label}</div>
 
-      {showInterest && (
-        <TipRow color={INTEREST_COLOR} label="Borrow Interest Paid" value={row.dailyInterest} />
-      )}
+      <TipRow color={DEMAND_COLOR} label="Demand — borrower interest" value={r.demand} />
 
-      {showIncentives && row.nimRevenue != null && (
-        <div style={{ marginTop: showInterest ? 8 : 0 }}>
-          {/* Sub-header makes clear the total is composed of the two rows below */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16,
-            color: MERKL_COLOR, fontWeight: 600, fontSize: 12,
-            borderBottom: '1px solid #2f3542', paddingBottom: 4, marginBottom: 4 }}>
-            <span>Supply Incentives (total)</span>
-            <span>{formatUSD(total)}</span>
-          </div>
-          <div style={{ paddingLeft: 10 }}>
-            <TipRow color={NIM_COLOR} label={`NIM revenue (idle × ${(NIM_APY * 100).toFixed(1)}%)`} value={row.nimRevenue} />
-            <TipRow color={OOP_COLOR} label={hasOOP ? 'Out-of-pocket' : 'Out-of-pocket (not yet tracked)'} value={hasOOP ? row.outOfPocket : null} dim={!hasOOP} />
-          </div>
+      <div style={{ marginTop: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16,
+          fontWeight: 600, fontSize: 12, color: '#e7e9ea',
+          borderBottom: '1px solid #2f3542', paddingBottom: 4, marginBottom: 4 }}>
+          <span>Subsidy (total)</span>
+          <span>{formatUSD(r.totalSubsidy)}</span>
         </div>
-      )}
+        <div style={{ paddingLeft: 10 }}>
+          <TipRow color={NIM_SUB_COLOR} label="NIM share (sustainable)" value={r.nimRevenue} />
+          <TipRow color={OOP_SUB_COLOR}
+            label={hasOOP ? 'Out-of-pocket (unsustainable)' : 'Out-of-pocket (none tracked)'}
+            value={hasOOP ? r.outOfPocket : 0} dim={!hasOOP} />
+        </div>
+      </div>
+
+      <div style={{ marginTop: 8, paddingTop: 6, borderTop: '1px solid #2f3542',
+        display: 'flex', justifyContent: 'space-between', gap: 16, fontSize: 12, fontWeight: 600,
+        color: positive ? SURPLUS_COLOR : DEFICIT_COLOR }}>
+        <span>{positive ? 'Self-sustaining' : 'Net subsidy'}{coverage != null ? ` · ${coverage.toFixed(0)}% covered` : ''}</span>
+        <span>{positive ? '+' : '−'}{formatUSD(Math.abs(net))}/day</span>
+      </div>
     </div>
   );
 }
 
-function DailyFlowsChart({ chartData }) {
-  const [active, setActive] = useState(new Set(['dailyInterest', 'incentives']));
+function DemandVsSubsidyChart({ chartData }) {
   const [lookback, setLookback] = useState(30);
 
-  const toggle = key => setActive(prev => {
-    const next = new Set(prev);
-    next.has(key) ? next.delete(key) : next.add(key);
-    return next;
-  });
-
-  const filtered = lookback === null
-    ? chartData
-    : chartData.slice(-lookback);
-
+  const filtered = lookback === null ? chartData : chartData.slice(-lookback);
   const tickFmt = v => '$' + (v >= 1000 ? (v / 1000).toFixed(1) + 'K' : v.toFixed(0));
+
+  // Headline: where we are in the race (latest coverage), and if/when demand overtook subsidy.
+  const latest = [...filtered].reverse().find(d => d.totalSubsidy != null && d.demand != null);
+  const coverage = latest && latest.totalSubsidy ? (latest.demand / latest.totalSubsidy) * 100 : null;
+  const selfSustaining = coverage != null && coverage >= 100;
+  const statusColor = selfSustaining ? SURPLUS_COLOR : DEFICIT_COLOR;
+
+  // Only flag break-even if we're *currently* self-sustaining — mark where the ongoing
+  // surplus streak began. (Demand can beat NIM alone yet trail once out-of-pocket is added,
+  // so "first-ever surplus day" would be misleading.)
+  let crossover = null;
+  if (selfSustaining) {
+    for (let i = filtered.length - 1; i >= 0 && filtered[i].gapSurplus > 0; i--) {
+      crossover = filtered[i];
+    }
+  }
 
   return (
     <section className="chart-section">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
         <div>
-          <h3 style={{ margin: 0 }}>Daily Interest Paid vs Supply Incentives</h3>
-          <p style={{ color: '#71767b', fontSize: 12, margin: '2px 0 0' }}>
-            Supply incentives = NIM revenue from idle USDG @ {(NIM_APY * 100).toFixed(1)}% (tracked to market start) + out-of-pocket spend stacked on top once Merkl tracking begins
+          <h3 style={{ margin: 0 }}>Demand vs Subsidy — the road to self-sustaining</h3>
+          <p style={{ color: '#71767b', fontSize: 12, margin: '2px 0 0', maxWidth: 640 }}>
+            Borrower interest (organic demand) vs the subsidy we spend to bootstrap it — NIM share (sustainable)
+            + out-of-pocket incentives (unsustainable). The market stands on its own when the demand line clears the subsidy.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          {/* Lookback toggles */}
-          <div style={{ display: 'flex', gap: 4, background: '#1a1f2e', borderRadius: 6, padding: 3 }}>
-            {LOOKBACKS.map(({ label, days }) => (
-              <button key={label} onClick={() => setLookback(days)}
-                style={{ padding: '3px 10px', borderRadius: 4, fontSize: 12, cursor: 'pointer', border: 'none',
-                  background: lookback === days ? '#2f3542' : 'transparent',
-                  color: lookback === days ? '#e7e9ea' : '#71767b' }}>
-                {label}
-              </button>
-            ))}
-          </div>
-          {/* Metric toggles */}
-          {METRICS.map(m => {
-            const on = active.has(m.key);
-            return (
-              <button key={m.key} onClick={() => toggle(m.key)}
-                style={{ padding: '4px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
-                  border: `2px solid ${m.color}`,
-                  background: on ? m.color : 'transparent',
-                  color: on ? '#0f1419' : m.color, fontWeight: 600 }}>
-                {m.label}
-              </button>
-            );
-          })}
+        <div style={{ display: 'flex', gap: 4, background: '#1a1f2e', borderRadius: 6, padding: 3 }}>
+          {LOOKBACKS.map(({ label, days }) => (
+            <button key={label} onClick={() => setLookback(days)}
+              style={{ padding: '3px 10px', borderRadius: 4, fontSize: 12, cursor: 'pointer', border: 'none',
+                background: lookback === days ? '#2f3542' : 'transparent',
+                color: lookback === days ? '#e7e9ea' : '#71767b' }}>
+              {label}
+            </button>
+          ))}
         </div>
       </div>
+
+      {/* Coverage headline — states the race position in words + a bar toward the 100% goal */}
+      {coverage != null && (
+        <div style={{ margin: '12px 0 4px' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 24, fontWeight: 700, color: statusColor }}>{coverage.toFixed(0)}%</span>
+            <span style={{ color: '#e7e9ea', fontSize: 13 }}>
+              of subsidy is covered by demand — {formatUSD(latest.demand)}/day demand vs {formatUSD(latest.totalSubsidy)}/day subsidy
+            </span>
+            <span style={{ color: '#71767b', fontSize: 12 }}>· goal: 100% {selfSustaining ? '✓ self-sustaining' : '(self-sustaining)'}</span>
+          </div>
+          <div style={{ height: 6, background: '#2f3542', borderRadius: 3, marginTop: 6, overflow: 'hidden', maxWidth: 460 }}>
+            <div style={{ height: '100%', width: Math.min(coverage, 100) + '%', background: statusColor, transition: 'width .3s' }} />
+          </div>
+        </div>
+      )}
+
+      {/* Legend (direct-labelled, no chart junk) */}
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', margin: '10px 0', fontSize: 12, color: '#a9b1ba' }}>
+        <LegendChip color={DEMAND_COLOR} line label="Demand (borrower interest)" />
+        <LegendChip color={NIM_SUB_COLOR} label="NIM share (sustainable subsidy)" />
+        <LegendChip color={OOP_SUB_COLOR} label="Out-of-pocket (unsustainable)" />
+        <LegendChip color={DEFICIT_COLOR} label="Deficit" />
+        <LegendChip color={SURPLUS_COLOR} label="Surplus" />
+      </div>
+
       <div className="chart-container">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={filtered} margin={{ top: 10, right: 30, left: 20, bottom: 5 }} barCategoryGap="20%">
+          <ComposedChart data={filtered} margin={{ top: 10, right: 30, left: 20, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#2f3542" />
             <XAxis dataKey="displayDate" stroke="#71767b" tick={{ fill: '#71767b', fontSize: 11 }} tickMargin={10} interval="preserveStartEnd" />
             <YAxis stroke="#71767b" tick={{ fill: '#71767b', fontSize: 11 }} tickFormatter={tickFmt} width={70} />
-            <Tooltip content={<FlowsTooltip
-              showInterest={active.has('dailyInterest')}
-              showIncentives={active.has('incentives')}
-              showNim={active.has('nimRevenue')} />} />
-            <Legend wrapperStyle={{ color: '#e7e9ea' }} />
-            {active.has('dailyInterest') && (
-              <Bar dataKey="dailyInterest" fill={INTEREST_COLOR} name="Borrow Interest Paid" radius={[3, 3, 0, 0]} />
-            )}
-            {active.has('incentives') && (
-              <Bar dataKey="nimRevenue" stackId="incentives" fill={NIM_COLOR} name="NIM Revenue (idle USDG)" radius={[3, 3, 0, 0]} />
-            )}
-            {active.has('incentives') && (
-              <Bar dataKey="outOfPocket" stackId="incentives" fill={OOP_COLOR} name="Out-of-pocket Incentives" radius={[3, 3, 0, 0]} />
+            <Tooltip content={<DsTooltip />} />
+
+            {/* Subsidy composition (muted mountain we're trying to climb) */}
+            <Area dataKey="nimRevenue" stackId="subsidy" stroke="none" fill={NIM_SUB_COLOR} fillOpacity={0.45} isAnimationActive={false} />
+            <Area dataKey="oopArea"    stackId="subsidy" stroke="none" fill={OOP_SUB_COLOR} fillOpacity={0.5}  isAnimationActive={false} />
+
+            {/* Signed gap between demand and subsidy: transparent floor + red deficit / green surplus */}
+            <Area dataKey="gapFloor"   stackId="gap" stroke="none" fill="#000000" fillOpacity={0} isAnimationActive={false} />
+            <Area dataKey="gapDeficit" stackId="gap" stroke="none" fill={DEFICIT_COLOR} fillOpacity={0.30} isAnimationActive={false} />
+            <Area dataKey="gapSurplus" stackId="gap" stroke="none" fill={SURPLUS_COLOR} fillOpacity={0.32} isAnimationActive={false} />
+
+            {/* Demand — the hero line, drawn last so it sits on top */}
+            <Line dataKey="demand" type="monotone" stroke={DEMAND_COLOR} strokeWidth={2.5}
+              dot={false} isAnimationActive={false} activeDot={{ r: 4, fill: DEMAND_COLOR, strokeWidth: 0 }} />
+
+            {crossover && (
+              <ReferenceLine x={crossover.displayDate} stroke={SURPLUS_COLOR} strokeDasharray="4 3"
+                label={{ value: 'break-even', fill: SURPLUS_COLOR, fontSize: 11, position: 'insideTopRight' }} />
             )}
           </ComposedChart>
         </ResponsiveContainer>
@@ -349,10 +390,17 @@ export default function AaveUsdgTab() {
   const { data: hist, loading: histLoading } = useAaveUsdgHistory();
 
   const history = hist?.history || [];
+  // Merkl daily rewards are captured sparsely (API lookback limits). Once the campaign
+  // is tracked, forward-fill a missing daily snapshot so a data hole doesn't read as
+  // "subsidy paused" (which would draw a spurious surplus). Rows before the first tracked
+  // day stay null → treated as no out-of-pocket campaign yet.
+  let _lastMerkl = null;
   const chartData = history.map(row => {
     const totalDebt   = row.total_debt;
     const totalSupply = row.total_supply ?? null;
-    const merklRewards = row.merkl_daily_rewards ?? null;
+    const rawMerkl = row.merkl_daily_rewards ?? null;
+    if (rawMerkl != null) _lastMerkl = rawMerkl;
+    const merklRewards = rawMerkl != null ? rawMerkl : _lastMerkl; // null until first tracked day
 
     // Idle USDG = supply that isn't currently borrowed. This is what earns the NIM share.
     const idle = totalSupply != null && totalDebt != null
@@ -370,6 +418,22 @@ export default function AaveUsdgTab() {
       outOfPocket = Math.max(merklRewards - nimRevenue, 0);
     }
 
+    // ── Demand vs Subsidy framing ──────────────────────────────────────────
+    // Demand  = what borrowers voluntarily pay (organic).
+    // Subsidy = NIM share (sustainable) + out-of-pocket incentives (unsustainable).
+    // The story is the signed gap between them: deficit while we're bootstrapping,
+    // surplus once the market pays its own way.
+    const demand       = row.daily_interest;
+    const oopArea      = outOfPocket ?? 0; // no Merkl campaign tracked ⇒ 0 out-of-pocket
+    const totalSubsidy = nimRevenue != null ? nimRevenue + oopArea : null;
+
+    let gapFloor = null, gapDeficit = null, gapSurplus = null;
+    if (demand != null && totalSubsidy != null) {
+      gapFloor   = Math.min(demand, totalSubsidy);          // transparent base of the gap stack
+      gapDeficit = Math.max(totalSubsidy - demand, 0);      // red: subsidy not yet covered by demand
+      gapSurplus = Math.max(demand - totalSubsidy, 0);      // green: demand beyond subsidy (self-sustaining)
+    }
+
     return {
       date: row.date,
       displayDate: formatDate(row.date),
@@ -383,6 +447,12 @@ export default function AaveUsdgTab() {
       nimRevenue,
       nimFunded,
       outOfPocket,
+      demand,
+      oopArea,
+      totalSubsidy,
+      gapFloor,
+      gapDeficit,
+      gapSurplus,
     };
   });
 
@@ -494,8 +564,8 @@ export default function AaveUsdgTab() {
             </div>
           </section>
 
-          {/* Chart 2: Daily flows — interest paid + incentives, toggleable */}
-          <DailyFlowsChart chartData={chartData} />
+          {/* Chart 2: Demand vs Subsidy — the bootstrapping story */}
+          <DemandVsSubsidyChart chartData={chartData} />
 
           {/* Chart 3: Supply amount + supply rate */}
           <SupplyChart chartData={chartData} />
