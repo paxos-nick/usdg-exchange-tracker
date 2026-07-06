@@ -45,6 +45,12 @@ function StatCard({ label, value, sub, color }) {
 
 const INTEREST_COLOR = '#f59e0b';
 const MERKL_COLOR    = '#b6509e';
+const NIM_COLOR      = '#8b5cf6'; // NIM-funded portion of incentives
+const OOP_COLOR      = '#ec4899'; // out-of-pocket incentive spend
+
+// Revenue-share rate earned on idle USDG sitting on Aave (supply TVL − borrow TVL).
+// This "NIM share" funds part of the Merkl incentives; anything above it is out-of-pocket.
+const NIM_APY = 0.031; // 3.1% APY
 
 const tooltipBase = {
   contentStyle: { backgroundColor: '#1a1f2e', border: '1px solid #2f3542', borderRadius: 8, color: '#e7e9ea' },
@@ -53,8 +59,46 @@ const tooltipBase = {
 
 const METRICS = [
   { key: 'dailyInterest', label: 'Borrow Interest Paid', color: INTEREST_COLOR },
-  { key: 'merklRewards',  label: 'Merkl Supply Incentives', color: MERKL_COLOR },
+  { key: 'incentives',    label: 'Merkl Supply Incentives', color: MERKL_COLOR },
 ];
+
+// CSV export: column header + accessor for each field of the daily dataset.
+const CSV_COLUMNS = [
+  ['date',                        r => r.date],
+  ['total_borrowed_usd',          r => r.totalDebt],
+  ['borrow_apy_pct',              r => r.borrowApy],
+  ['daily_interest_usd',          r => r.dailyInterest],
+  ['total_supply_usd',            r => r.totalSupply],
+  ['supply_apy_pct',              r => r.supplyApy],
+  ['idle_usdg',                   r => r.idle],
+  ['merkl_incentives_usd',        r => r.merklRewards],
+  ['nim_funded_incentive_usd',    r => r.nimFunded],
+  ['out_of_pocket_incentive_usd', r => r.outOfPocket],
+];
+
+function toCsv(rows) {
+  const header = CSV_COLUMNS.map(c => c[0]).join(',');
+  const lines = rows.map(r =>
+    CSV_COLUMNS.map(([, accessor]) => {
+      const v = accessor(r);
+      return v == null ? '' : v;
+    }).join(',')
+  );
+  return [header, ...lines].join('\n');
+}
+
+function downloadCsv(rows, lookback) {
+  const slice = lookback == null ? rows : rows.slice(-lookback);
+  const blob = new Blob([toCsv(slice)], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `aave-usdg-daily-${lookback == null ? 'all' : lookback + 'd'}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 
 const SUPPLY_COLOR = '#3b82f6';
 
@@ -138,8 +182,32 @@ const LOOKBACKS = [
   { label: 'All',     days: null },
 ];
 
+function DownloadControl({ chartData }) {
+  const RANGES = [
+    { label: '30 Days', days: 30 },
+    { label: '90 Days', days: 90 },
+    { label: 'All',     days: null },
+  ];
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <span style={{ color: '#71767b', fontSize: 13 }}>Download daily data:</span>
+      <div style={{ display: 'flex', gap: 4, background: '#1a1f2e', borderRadius: 6, padding: 3 }}>
+        {RANGES.map(({ label, days }) => (
+          <button key={label} onClick={() => downloadCsv(chartData, days)}
+            disabled={!chartData.length}
+            style={{ padding: '5px 12px', borderRadius: 4, fontSize: 12, fontWeight: 600,
+              cursor: chartData.length ? 'pointer' : 'not-allowed', border: 'none',
+              background: 'transparent', color: '#00d4aa' }}>
+            ⬇ {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function DailyFlowsChart({ chartData }) {
-  const [active, setActive] = useState(new Set(['dailyInterest', 'merklRewards']));
+  const [active, setActive] = useState(new Set(['dailyInterest', 'incentives']));
   const [lookback, setLookback] = useState(30);
 
   const toggle = key => setActive(prev => {
@@ -160,7 +228,7 @@ function DailyFlowsChart({ chartData }) {
         <div>
           <h3 style={{ margin: 0 }}>Daily Interest Paid vs Supply Incentives</h3>
           <p style={{ color: '#71767b', fontSize: 12, margin: '2px 0 0' }}>
-            Borrow interest accrued vs Merkl rewards distributed per day
+            Borrow interest accrued vs Merkl incentives, split into NIM-funded (from idle USDG @ {(NIM_APY * 100).toFixed(1)}%) and out-of-pocket spend
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -205,8 +273,11 @@ function DailyFlowsChart({ chartData }) {
             {active.has('dailyInterest') && (
               <Bar dataKey="dailyInterest" fill={INTEREST_COLOR} name="Borrow Interest Paid" radius={[3, 3, 0, 0]} />
             )}
-            {active.has('merklRewards') && (
-              <Bar dataKey="merklRewards" fill={MERKL_COLOR} name="Merkl Supply Incentives" radius={[3, 3, 0, 0]} />
+            {active.has('incentives') && (
+              <Bar dataKey="nimFunded" stackId="incentives" fill={NIM_COLOR} name="NIM-funded Incentives" />
+            )}
+            {active.has('incentives') && (
+              <Bar dataKey="outOfPocket" stackId="incentives" fill={OOP_COLOR} name="Out-of-pocket Incentives" radius={[3, 3, 0, 0]} />
             )}
           </BarChart>
         </ResponsiveContainer>
@@ -233,16 +304,39 @@ export default function AaveUsdgTab() {
   const { data: hist, loading: histLoading } = useAaveUsdgHistory();
 
   const history = hist?.history || [];
-  const chartData = history.map(row => ({
-    date: row.date,
-    displayDate: formatDate(row.date),
-    totalDebt: row.total_debt,
-    borrowApy: parseFloat(row.borrow_apy),
-    dailyInterest: row.daily_interest,
-    merklRewards: row.merkl_daily_rewards ?? null,
-    totalSupply: row.total_supply ?? null,
-    supplyApy: row.supply_apy != null ? parseFloat(row.supply_apy) : null,
-  }));
+  const chartData = history.map(row => {
+    const totalDebt   = row.total_debt;
+    const totalSupply = row.total_supply ?? null;
+    const merklRewards = row.merkl_daily_rewards ?? null;
+
+    // Idle USDG = supply that isn't currently borrowed. This is what earns the NIM share.
+    const idle = totalSupply != null && totalDebt != null
+      ? Math.max(totalSupply - totalDebt, 0)
+      : null;
+    // Daily revenue thrown off by the idle USDG at the NIM rate.
+    const nimCapacity = idle != null ? idle * NIM_APY / 365 : null;
+
+    let nimFunded = null;   // portion of the day's incentives covered by NIM revenue
+    let outOfPocket = null; // incremental spend on top of NIM revenue
+    if (merklRewards != null && nimCapacity != null) {
+      nimFunded   = Math.min(nimCapacity, merklRewards);
+      outOfPocket = Math.max(merklRewards - nimCapacity, 0);
+    }
+
+    return {
+      date: row.date,
+      displayDate: formatDate(row.date),
+      totalDebt,
+      borrowApy: parseFloat(row.borrow_apy),
+      dailyInterest: row.daily_interest,
+      merklRewards,
+      totalSupply,
+      supplyApy: row.supply_apy != null ? parseFloat(row.supply_apy) : null,
+      idle,
+      nimFunded,
+      outOfPocket,
+    };
+  });
 
   if (liveLoading && histLoading) return (
     <div className="weekly-trends">
@@ -260,12 +354,18 @@ export default function AaveUsdgTab() {
 
   const { totalVariableDebt, variableBorrowApy, dailyInterestCost, spokeBreakdown } = live || {};
 
+  // Most recent day with a computable incentive split, for the summary cards.
+  const latestIncentive = [...chartData].reverse().find(d => d.nimFunded != null) || null;
+
   return (
     <div className="weekly-trends">
       <h2>USDG — Aave v4</h2>
-      <p style={{ color: '#71767b', marginTop: -8, marginBottom: 24 }}>
-        USDG borrowing across all Aave v4 spokes on Ethereum mainnet · live data refreshes every 60s
-      </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap', marginTop: -8, marginBottom: 24 }}>
+        <p style={{ color: '#71767b', margin: 0 }}>
+          USDG borrowing across all Aave v4 spokes on Ethereum mainnet · live data refreshes every 60s
+        </p>
+        <DownloadControl chartData={chartData} />
+      </div>
 
       {/* Live metrics */}
       {live && (
@@ -288,6 +388,22 @@ export default function AaveUsdgTab() {
                 sub={totalVariableDebt > 0 ? ((spoke.debt / totalVariableDebt) * 100).toFixed(1) + '% of total' : ''}
                 color={SPOKE_COLORS[i % SPOKE_COLORS.length]} />
             ))}
+          </div>
+        </section>
+      )}
+
+      {/* Incentive funding breakdown */}
+      {latestIncentive && (
+        <section className="wow-section">
+          <h3>Incentive Funding (latest: {latestIncentive.displayDate})</h3>
+          <div className="comparison-grid">
+            <StatCard label="Total Merkl Incentives" value={formatUSD(latestIncentive.merklRewards)} sub="distributed per day" color={MERKL_COLOR} />
+            <StatCard label="NIM-funded Portion" value={formatUSD(latestIncentive.nimFunded)}
+              sub={`idle USDG × ${(NIM_APY * 100).toFixed(1)}% ÷ 365`} color={NIM_COLOR} />
+            <StatCard label="Out-of-pocket Spend" value={formatUSD(latestIncentive.outOfPocket)}
+              sub="incentive cost above NIM revenue" color={OOP_COLOR} />
+            <StatCard label="Idle USDG on Aave" value={formatUSD(latestIncentive.idle)}
+              sub="supply TVL − borrowed" color={SUPPLY_COLOR} />
           </div>
         </section>
       )}

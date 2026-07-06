@@ -333,6 +333,7 @@ body {
 /* Tab Navigation */
 .tab-navigation {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 24px;
   background: #1a1f2e;
@@ -352,6 +353,67 @@ body {
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
+}
+
+/* Grouped dropdown navigation */
+.nav-group {
+  position: relative;
+  flex: 1;
+  display: flex;
+}
+
+.nav-group-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.nav-caret {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.nav-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 180px;
+  z-index: 50;
+  background: #1a1f2e;
+  border: 1px solid #2f3542;
+  border-radius: 10px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.nav-dropdown-item {
+  text-align: left;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  color: #c4c8cc;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 7px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.nav-dropdown-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e7e9ea;
+}
+
+.nav-dropdown-item.active {
+  background: #00d4aa;
+  color: #0f1419;
+  font-weight: 600;
 }
 
 .tab-btn:hover {

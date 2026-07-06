@@ -31,6 +31,81 @@ const EXCHANGE_NAMES = {
   okx: 'OKX'
 };
 
+// Navigation grouped into dropdown menus so it scales as tabs are added.
+// `defi: true` tabs are hidden when VITE_HIDE_DEFI_TABS is set.
+const TAB_GROUPS = [
+  { label: 'Volume', tabs: [
+    { id: 'overall',   label: 'Total USDG Activity' },
+    { id: 'dashboard', label: 'CEX Dashboard' },
+    { id: 'weekly',    label: 'Weekly Trends' },
+    { id: 'monthly',   label: 'Monthly Trends' },
+    { id: 'depth',     label: 'Depth & Spread' },
+  ] },
+  { label: 'DeFi', tabs: [
+    { id: 'totaldefi', label: 'Total DeFi', defi: true },
+    { id: 'dex',       label: 'DEX Dashboard', defi: true },
+    { id: 'vaults',    label: 'Vaults & Lending' },
+    { id: 'aave-usdg', label: 'USDG AAVE v4' },
+  ] },
+  { label: 'PAXG', tabs: [
+    { id: 'paxg-supply', label: 'PAXG Supply' },
+    { id: 'paxg-volume', label: 'PAXG Volume' },
+    { id: 'binance-paxg', label: 'Binance PAXG' },
+  ] },
+  { label: 'More', tabs: [
+    { id: 'pyusd',   label: 'PYUSD' },
+    { id: 'fusebox', label: 'Fuse Box' },
+  ] },
+];
+
+function GroupedNav({ activeTab, navigateTo, hideDefiTabs }) {
+  const [openGroup, setOpenGroup] = useState(null);
+
+  useEffect(() => {
+    if (!openGroup) return;
+    const close = () => setOpenGroup(null);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [openGroup]);
+
+  const groups = TAB_GROUPS
+    .map(g => ({ ...g, tabs: g.tabs.filter(t => !(t.defi && hideDefiTabs)) }))
+    .filter(g => g.tabs.length);
+
+  return (
+    <nav className="tab-navigation">
+      {groups.map(group => {
+        const activeInGroup = group.tabs.some(t => t.id === activeTab);
+        const isOpen = openGroup === group.label;
+        return (
+          <div key={group.label} className="nav-group" onClick={e => e.stopPropagation()}>
+            <button
+              className={`tab-btn nav-group-btn ${activeInGroup ? 'active' : ''}`}
+              onClick={() => setOpenGroup(isOpen ? null : group.label)}
+            >
+              {group.label}
+              <span className="nav-caret">{isOpen ? '▴' : '▾'}</span>
+            </button>
+            {isOpen && (
+              <div className="nav-dropdown">
+                {group.tabs.map(t => (
+                  <button
+                    key={t.id}
+                    className={`nav-dropdown-item ${t.id === activeTab ? 'active' : ''}`}
+                    onClick={() => { navigateTo(t.id); setOpenGroup(null); }}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </nav>
+  );
+}
+
 function formatTime(date) {
   if (!date) return '';
   return date.toLocaleTimeString('en-US', {
@@ -106,96 +181,7 @@ export default function App() {
       </header>
 
       {/* Tab Navigation */}
-      <nav className="tab-navigation">
-        <button
-          className={`tab-btn ${activeTab === 'overall' ? 'active' : ''}`}
-          onClick={() => navigateTo('overall')}
-        >
-          Total USDG Activity
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
-          onClick={() => navigateTo('dashboard')}
-        >
-          CEX Dashboard
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'weekly' ? 'active' : ''}`}
-          onClick={() => navigateTo('weekly')}
-        >
-          Weekly Trends
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'monthly' ? 'active' : ''}`}
-          onClick={() => navigateTo('monthly')}
-        >
-          Monthly Trends
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'depth' ? 'active' : ''}`}
-          onClick={() => navigateTo('depth')}
-        >
-          Depth & Spread
-        </button>
-        {!hideDefiTabs && (
-          <button
-            className={`tab-btn ${activeTab === 'totaldefi' ? 'active' : ''}`}
-            onClick={() => navigateTo('totaldefi')}
-          >
-            Total DeFi
-          </button>
-        )}
-        {!hideDefiTabs && (
-          <button
-            className={`tab-btn ${activeTab === 'dex' ? 'active' : ''}`}
-            onClick={() => navigateTo('dex')}
-          >
-            DEX Dashboard
-          </button>
-        )}
-        <button
-          className={`tab-btn ${activeTab === 'vaults' ? 'active' : ''}`}
-          onClick={() => navigateTo('vaults')}
-        >
-          Vaults & Lending
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'fusebox' ? 'active' : ''}`}
-          onClick={() => navigateTo('fusebox')}
-        >
-          Fuse Box
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'pyusd' ? 'active' : ''}`}
-          onClick={() => navigateTo('pyusd')}
-        >
-          PYUSD
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'paxg-supply' ? 'active' : ''}`}
-          onClick={() => navigateTo('paxg-supply')}
-        >
-          PAXG Supply
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'paxg-volume' ? 'active' : ''}`}
-          onClick={() => navigateTo('paxg-volume')}
-        >
-          PAXG Volume
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'binance-paxg' ? 'active' : ''}`}
-          onClick={() => navigateTo('binance-paxg')}
-        >
-          Binance PAXG
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'aave-usdg' ? 'active' : ''}`}
-          onClick={() => navigateTo('aave-usdg')}
-        >
-          USDG AAVE v4
-        </button>
-      </nav>
+      <GroupedNav activeTab={activeTab} navigateTo={navigateTo} hideDefiTabs={hideDefiTabs} />
 
       {activeTab === 'weekly' ? (
         <WeeklyTrends />
