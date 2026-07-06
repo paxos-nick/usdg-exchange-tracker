@@ -59,8 +59,7 @@ const tooltipBase = {
 
 const METRICS = [
   { key: 'dailyInterest', label: 'Borrow Interest Paid', color: INTEREST_COLOR },
-  { key: 'incentives',    label: 'Merkl Supply Incentives', color: MERKL_COLOR },
-  { key: 'nimRevenue',    label: 'NIM Revenue', color: NIM_COLOR },
+  { key: 'incentives',    label: 'Supply Incentives', color: MERKL_COLOR },
 ];
 
 // CSV export: column header + accessor for each field of the daily dataset.
@@ -220,10 +219,11 @@ function TipRow({ color, label, value, dim }) {
   );
 }
 
-function FlowsTooltip({ active, payload, label, showInterest, showIncentives, showNim }) {
+function FlowsTooltip({ active, payload, label, showInterest, showIncentives }) {
   if (!active || !payload?.length) return null;
   const row = payload[0].payload;
-  const hasIncentives = row.merklRewards != null;
+  const hasOOP = row.outOfPocket != null; // out-of-pocket is only tracked once Merkl data exists
+  const total = (row.nimRevenue || 0) + (row.outOfPocket || 0);
 
   return (
     <div style={{ ...tooltipBase.contentStyle, padding: '10px 14px', minWidth: 236 }}>
@@ -233,25 +233,19 @@ function FlowsTooltip({ active, payload, label, showInterest, showIncentives, sh
         <TipRow color={INTEREST_COLOR} label="Borrow Interest Paid" value={row.dailyInterest} />
       )}
 
-      {showIncentives && hasIncentives && (
+      {showIncentives && row.nimRevenue != null && (
         <div style={{ marginTop: showInterest ? 8 : 0 }}>
-          {/* Sub-header: makes clear the total is composed of the two rows below */}
+          {/* Sub-header makes clear the total is composed of the two rows below */}
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16,
             color: MERKL_COLOR, fontWeight: 600, fontSize: 12,
             borderBottom: '1px solid #2f3542', paddingBottom: 4, marginBottom: 4 }}>
             <span>Supply Incentives (total)</span>
-            <span>{formatUSD(row.merklRewards)}</span>
+            <span>{formatUSD(total)}</span>
           </div>
           <div style={{ paddingLeft: 10 }}>
-            <TipRow color={NIM_COLOR} label="NIM-funded" value={row.nimFunded} />
-            <TipRow color={OOP_COLOR} label="Out-of-pocket" value={row.outOfPocket} />
+            <TipRow color={NIM_COLOR} label={`NIM revenue (idle × ${(NIM_APY * 100).toFixed(1)}%)`} value={row.nimRevenue} />
+            <TipRow color={OOP_COLOR} label={hasOOP ? 'Out-of-pocket' : 'Out-of-pocket (not yet tracked)'} value={hasOOP ? row.outOfPocket : null} dim={!hasOOP} />
           </div>
-        </div>
-      )}
-
-      {showNim && row.nimRevenue != null && (
-        <div style={{ marginTop: 8, paddingTop: 6, borderTop: '1px solid #2f3542' }}>
-          <TipRow color={NIM_COLOR} label={`NIM revenue (idle × ${(NIM_APY * 100).toFixed(1)}%)`} value={row.nimRevenue} dim />
         </div>
       )}
     </div>
@@ -259,7 +253,7 @@ function FlowsTooltip({ active, payload, label, showInterest, showIncentives, sh
 }
 
 function DailyFlowsChart({ chartData }) {
-  const [active, setActive] = useState(new Set(['dailyInterest', 'incentives', 'nimRevenue']));
+  const [active, setActive] = useState(new Set(['dailyInterest', 'incentives']));
   const [lookback, setLookback] = useState(30);
 
   const toggle = key => setActive(prev => {
@@ -280,7 +274,7 @@ function DailyFlowsChart({ chartData }) {
         <div>
           <h3 style={{ margin: 0 }}>Daily Interest Paid vs Supply Incentives</h3>
           <p style={{ color: '#71767b', fontSize: 12, margin: '2px 0 0' }}>
-            Merkl incentives split into NIM-funded + out-of-pocket; dashed line is NIM revenue from idle USDG @ {(NIM_APY * 100).toFixed(1)}% (computable back to market start)
+            Supply incentives = NIM revenue from idle USDG @ {(NIM_APY * 100).toFixed(1)}% (tracked to market start) + out-of-pocket spend stacked on top once Merkl tracking begins
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -325,15 +319,10 @@ function DailyFlowsChart({ chartData }) {
               <Bar dataKey="dailyInterest" fill={INTEREST_COLOR} name="Borrow Interest Paid" radius={[3, 3, 0, 0]} />
             )}
             {active.has('incentives') && (
-              <Bar dataKey="nimFunded" stackId="incentives" fill={NIM_COLOR} name="NIM-funded Incentives" />
+              <Bar dataKey="nimRevenue" stackId="incentives" fill={NIM_COLOR} name="NIM Revenue (idle USDG)" radius={[3, 3, 0, 0]} />
             )}
             {active.has('incentives') && (
               <Bar dataKey="outOfPocket" stackId="incentives" fill={OOP_COLOR} name="Out-of-pocket Incentives" radius={[3, 3, 0, 0]} />
-            )}
-            {active.has('nimRevenue') && (
-              <Line type="monotone" dataKey="nimRevenue" stroke={NIM_COLOR} strokeWidth={2}
-                strokeDasharray="5 3" dot={false} name="NIM Revenue (idle USDG)"
-                connectNulls activeDot={{ r: 4, fill: NIM_COLOR, strokeWidth: 0 }} />
             )}
           </ComposedChart>
         </ResponsiveContainer>
