@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   ComposedChart, Area, Line,
   XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Legend, ReferenceLine
+  ResponsiveContainer, Legend, ReferenceLine, ReferenceArea
 } from 'recharts';
 import { useAaveUsdg, useAaveUsdgHistory } from '../hooks/useVolumeData';
 
@@ -234,11 +234,11 @@ function LegendChip({ color, line, label }) {
 function DsTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   const r = payload[0].payload;
-  if (r.demand == null || r.totalSubsidy == null) return null;
-  const net = r.demand - r.totalSubsidy;
-  const coverage = r.totalSubsidy ? (r.demand / r.totalSubsidy) * 100 : null;
-  const hasOOP = r.outOfPocket != null;
-  const positive = net >= 0;
+  if (r.demand == null) return null;
+  const tracked = r.totalSubsidy != null; // out-of-pocket known this day
+  const net = tracked ? r.demand - r.totalSubsidy : null;
+  const coverage = tracked && r.totalSubsidy ? (r.demand / r.totalSubsidy) * 100 : null;
+  const positive = net != null && net >= 0;
 
   return (
     <div style={{ ...tooltipBase.contentStyle, padding: '10px 14px', minWidth: 258 }}>
@@ -250,23 +250,29 @@ function DsTooltip({ active, payload, label }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16,
           fontWeight: 600, fontSize: 12, color: '#e7e9ea',
           borderBottom: '1px solid #2f3542', paddingBottom: 4, marginBottom: 4 }}>
-          <span>Subsidy (total)</span>
-          <span>{formatUSD(r.totalSubsidy)}</span>
+          <span>Subsidy {tracked ? '(total)' : ''}</span>
+          <span>{tracked ? formatUSD(r.totalSubsidy) : '—'}</span>
         </div>
         <div style={{ paddingLeft: 10 }}>
           <TipRow color={NIM_SUB_COLOR} label="NIM share (sustainable)" value={r.nimRevenue} />
           <TipRow color={OOP_SUB_COLOR}
-            label={hasOOP ? 'Out-of-pocket (unsustainable)' : 'Out-of-pocket (none tracked)'}
-            value={hasOOP ? r.outOfPocket : 0} dim={!hasOOP} />
+            label={tracked ? 'Out-of-pocket (unsustainable)' : 'Out-of-pocket (not tracked)'}
+            value={tracked ? r.outOfPocket : null} dim={!tracked} />
         </div>
       </div>
 
-      <div style={{ marginTop: 8, paddingTop: 6, borderTop: '1px solid #2f3542',
-        display: 'flex', justifyContent: 'space-between', gap: 16, fontSize: 12, fontWeight: 600,
-        color: positive ? SURPLUS_COLOR : DEFICIT_COLOR }}>
-        <span>{positive ? 'Self-sustaining' : 'Net subsidy'}{coverage != null ? ` · ${coverage.toFixed(0)}% covered` : ''}</span>
-        <span>{positive ? '+' : '−'}{formatUSD(Math.abs(net))}/day</span>
-      </div>
+      {tracked ? (
+        <div style={{ marginTop: 8, paddingTop: 6, borderTop: '1px solid #2f3542',
+          display: 'flex', justifyContent: 'space-between', gap: 16, fontSize: 12, fontWeight: 600,
+          color: positive ? SURPLUS_COLOR : DEFICIT_COLOR }}>
+          <span>{positive ? 'Self-sustaining' : 'Net subsidy'}{coverage != null ? ` · ${coverage.toFixed(0)}% covered` : ''}</span>
+          <span>{positive ? '+' : '−'}{formatUSD(Math.abs(net))}/day</span>
+        </div>
+      ) : (
+        <div style={{ marginTop: 8, paddingTop: 6, borderTop: '1px solid #2f3542', fontSize: 11, color: '#71767b' }}>
+          Out-of-pocket incentives not tracked before Merkl coverage began — total subsidy unknown.
+        </div>
+      )}
     </div>
   );
 }
@@ -276,6 +282,12 @@ function DemandVsSubsidyChart({ chartData }) {
 
   const filtered = lookback === null ? chartData : chartData.slice(-lookback);
   const tickFmt = v => '$' + (v >= 1000 ? (v / 1000).toFixed(1) + 'K' : v.toFixed(0));
+
+  // Out-of-pocket is only tracked from a certain day onward (Merkl API lookback). Everything
+  // before that is "subsidy unknown" — shade it so nobody reads NIM-only as total subsidy.
+  const trackedIdx = filtered.findIndex(d => d.totalSubsidy != null);
+  const trackingStart = trackedIdx >= 0 ? filtered[trackedIdx] : null;
+  const untrackedFrom = trackedIdx > 0 ? filtered[0] : null; // start of the shaded unknown band
 
   // Headline: where we are in the race (latest coverage), and if/when demand overtook subsidy.
   const latest = [...filtered].reverse().find(d => d.totalSubsidy != null && d.demand != null);
@@ -298,9 +310,10 @@ function DemandVsSubsidyChart({ chartData }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
         <div>
           <h3 style={{ margin: 0 }}>Demand vs Subsidy — the road to self-sustaining</h3>
-          <p style={{ color: '#71767b', fontSize: 12, margin: '2px 0 0', maxWidth: 640 }}>
-            Borrower interest (organic demand) vs the subsidy we spend to bootstrap it — NIM share (sustainable)
+          <p style={{ color: '#71767b', fontSize: 12, margin: '2px 0 0', maxWidth: 660 }}>
+            Borrower interest (organic demand) vs the subsidy that bootstraps it — NIM share (sustainable)
             + out-of-pocket incentives (unsustainable). The market stands on its own when the demand line clears the subsidy.
+            {trackingStart && ` Out-of-pocket is only tracked from ${trackingStart.displayDate} (Merkl API has no lookback); earlier days show NIM only.`}
           </p>
         </div>
         <div style={{ display: 'flex', gap: 4, background: '#1a1f2e', borderRadius: 6, padding: 3 }}>
@@ -347,6 +360,16 @@ function DemandVsSubsidyChart({ chartData }) {
             <XAxis dataKey="displayDate" stroke="#71767b" tick={{ fill: '#71767b', fontSize: 11 }} tickMargin={10} interval="preserveStartEnd" />
             <YAxis stroke="#71767b" tick={{ fill: '#71767b', fontSize: 11 }} tickFormatter={tickFmt} width={70} />
             <Tooltip content={<DsTooltip />} />
+
+            {/* Shade the period where out-of-pocket wasn't tracked — subsidy is unknown there */}
+            {untrackedFrom && trackingStart && (
+              <ReferenceArea x1={untrackedFrom.displayDate} x2={trackingStart.displayDate}
+                fill="#71767b" fillOpacity={0.08} stroke="none"
+                label={{ value: 'out-of-pocket not tracked', fill: '#71767b', fontSize: 10, position: 'insideTop' }} />
+            )}
+            {untrackedFrom && trackingStart && (
+              <ReferenceLine x={trackingStart.displayDate} stroke="#71767b" strokeDasharray="3 3" />
+            )}
 
             {/* Subsidy composition (muted mountain we're trying to climb) */}
             <Area dataKey="nimRevenue" stackId="subsidy" stroke="none" fill={NIM_SUB_COLOR} fillOpacity={0.45} isAnimationActive={false} />
@@ -423,9 +446,14 @@ export default function AaveUsdgTab() {
     // Subsidy = NIM share (sustainable) + out-of-pocket incentives (unsustainable).
     // The story is the signed gap between them: deficit while we're bootstrapping,
     // surplus once the market pays its own way.
+    //
+    // Out-of-pocket is UNKNOWN before Merkl tracking begins (the API has no lookback) —
+    // NOT zero. So total subsidy / deficit / coverage are only defined once it's tracked;
+    // earlier days show demand + NIM as context but make no self-sustaining claim.
     const demand       = row.daily_interest;
-    const oopArea      = outOfPocket ?? 0; // no Merkl campaign tracked ⇒ 0 out-of-pocket
-    const totalSubsidy = nimRevenue != null ? nimRevenue + oopArea : null;
+    const oopTracked   = merklRewards != null;
+    const oopArea      = oopTracked ? outOfPocket : null;
+    const totalSubsidy = (nimRevenue != null && oopTracked) ? nimRevenue + outOfPocket : null;
 
     let gapFloor = null, gapDeficit = null, gapSurplus = null;
     if (demand != null && totalSubsidy != null) {
