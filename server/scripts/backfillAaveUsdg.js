@@ -32,11 +32,15 @@ async function run() {
     dates.push(d.toISOString().split('T')[0]);
   }
 
-  // Skip already stored dates
-  const existing = await pool.query('SELECT snapshot_date::text FROM aave_usdg_history');
-  const existingSet = new Set(existing.rows.map(r => r.snapshot_date.split('T')[0]));
-  const todo = dates.filter(d => !existingSet.has(d));
-  console.log(`[Backfill] ${existingSet.size} already stored, ${todo.length} to fetch`);
+  // Reprocess dates that are missing OR lack supply data (idle USDG needs total_supply).
+  const existing = await pool.query(
+    'SELECT snapshot_date::text AS d, (total_supply IS NOT NULL) AS has_supply FROM aave_usdg_history'
+  );
+  const completeSet = new Set(
+    existing.rows.filter(r => r.has_supply).map(r => r.d.split('T')[0])
+  );
+  const todo = dates.filter(d => !completeSet.has(d));
+  console.log(`[Backfill] ${completeSet.size} complete (with supply), ${todo.length} to (re)fetch`);
 
   if (todo.length === 0) { console.log('[Backfill] Nothing to do.'); await pool.end(); return; }
 
@@ -50,16 +54,20 @@ async function run() {
 
       await pool.query(
         `INSERT INTO aave_usdg_history
-           (snapshot_date, total_debt, borrow_apy, daily_interest, block_number, spoke_breakdown)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (snapshot_date) DO NOTHING`,
+           (snapshot_date, total_debt, borrow_apy, daily_interest, block_number, spoke_breakdown, total_supply, supply_apy)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (snapshot_date) DO UPDATE SET
+           total_supply = EXCLUDED.total_supply,
+           supply_apy   = EXCLUDED.supply_apy`,
         [dateStr, data.totalVariableDebt, data.variableBorrowApy,
-         data.dailyInterestCost, blockNumber, JSON.stringify(data.spokeBreakdown)]
+         data.dailyInterestCost, blockNumber, JSON.stringify(data.spokeBreakdown),
+         data.totalSupply, data.supplyApy]
       );
 
       success++;
       if (success % 10 === 0 || i === todo.length - 1) {
-        console.log(`[Backfill] ${i + 1}/${todo.length} — ${dateStr}: $${Math.round(data.totalVariableDebt / 1e6 * 100) / 100}M borrowed @ ${data.variableBorrowApy.toFixed(2)}% APY`);
+        const idle = Math.max(data.totalSupply - data.totalVariableDebt, 0);
+        console.log(`[Backfill] ${i + 1}/${todo.length} — ${dateStr}: $${Math.round(data.totalVariableDebt / 1e6 * 100) / 100}M borrowed, $${Math.round(data.totalSupply / 1e6 * 100) / 100}M supplied, idle $${Math.round(idle / 1e6 * 100) / 100}M`);
       }
     } catch (err) {
       errors++;

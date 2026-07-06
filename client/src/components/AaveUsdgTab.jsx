@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   ComposedChart, Area, Line,
   XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Legend, Bar, BarChart
+  ResponsiveContainer, Legend, Bar
 } from 'recharts';
 import { useAaveUsdg, useAaveUsdgHistory } from '../hooks/useVolumeData';
 
@@ -60,6 +60,7 @@ const tooltipBase = {
 const METRICS = [
   { key: 'dailyInterest', label: 'Borrow Interest Paid', color: INTEREST_COLOR },
   { key: 'incentives',    label: 'Merkl Supply Incentives', color: MERKL_COLOR },
+  { key: 'nimRevenue',    label: 'NIM Revenue', color: NIM_COLOR },
 ];
 
 // CSV export: column header + accessor for each field of the daily dataset.
@@ -71,6 +72,7 @@ const CSV_COLUMNS = [
   ['total_supply_usd',            r => r.totalSupply],
   ['supply_apy_pct',              r => r.supplyApy],
   ['idle_usdg',                   r => r.idle],
+  ['nim_revenue_usd',             r => r.nimRevenue],
   ['merkl_incentives_usd',        r => r.merklRewards],
   ['nim_funded_incentive_usd',    r => r.nimFunded],
   ['out_of_pocket_incentive_usd', r => r.outOfPocket],
@@ -206,8 +208,58 @@ function DownloadControl({ chartData }) {
   );
 }
 
+function TipRow({ color, label, value, dim }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, fontSize: 12, padding: '1px 0' }}>
+      <span style={{ color: dim ? '#8b95a1' : color }}>
+        <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: color, marginRight: 6 }} />
+        {label}
+      </span>
+      <span style={{ color: '#e7e9ea' }}>{value != null ? formatUSD(value) : '—'}</span>
+    </div>
+  );
+}
+
+function FlowsTooltip({ active, payload, label, showInterest, showIncentives, showNim }) {
+  if (!active || !payload?.length) return null;
+  const row = payload[0].payload;
+  const hasIncentives = row.merklRewards != null;
+
+  return (
+    <div style={{ ...tooltipBase.contentStyle, padding: '10px 14px', minWidth: 236 }}>
+      <div style={{ color: '#71767b', marginBottom: 8, fontSize: 12 }}>{label}</div>
+
+      {showInterest && (
+        <TipRow color={INTEREST_COLOR} label="Borrow Interest Paid" value={row.dailyInterest} />
+      )}
+
+      {showIncentives && hasIncentives && (
+        <div style={{ marginTop: showInterest ? 8 : 0 }}>
+          {/* Sub-header: makes clear the total is composed of the two rows below */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16,
+            color: MERKL_COLOR, fontWeight: 600, fontSize: 12,
+            borderBottom: '1px solid #2f3542', paddingBottom: 4, marginBottom: 4 }}>
+            <span>Supply Incentives (total)</span>
+            <span>{formatUSD(row.merklRewards)}</span>
+          </div>
+          <div style={{ paddingLeft: 10 }}>
+            <TipRow color={NIM_COLOR} label="NIM-funded" value={row.nimFunded} />
+            <TipRow color={OOP_COLOR} label="Out-of-pocket" value={row.outOfPocket} />
+          </div>
+        </div>
+      )}
+
+      {showNim && row.nimRevenue != null && (
+        <div style={{ marginTop: 8, paddingTop: 6, borderTop: '1px solid #2f3542' }}>
+          <TipRow color={NIM_COLOR} label={`NIM revenue (idle × ${(NIM_APY * 100).toFixed(1)}%)`} value={row.nimRevenue} dim />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DailyFlowsChart({ chartData }) {
-  const [active, setActive] = useState(new Set(['dailyInterest', 'incentives']));
+  const [active, setActive] = useState(new Set(['dailyInterest', 'incentives', 'nimRevenue']));
   const [lookback, setLookback] = useState(30);
 
   const toggle = key => setActive(prev => {
@@ -228,7 +280,7 @@ function DailyFlowsChart({ chartData }) {
         <div>
           <h3 style={{ margin: 0 }}>Daily Interest Paid vs Supply Incentives</h3>
           <p style={{ color: '#71767b', fontSize: 12, margin: '2px 0 0' }}>
-            Borrow interest accrued vs Merkl incentives, split into NIM-funded (from idle USDG @ {(NIM_APY * 100).toFixed(1)}%) and out-of-pocket spend
+            Merkl incentives split into NIM-funded + out-of-pocket; dashed line is NIM revenue from idle USDG @ {(NIM_APY * 100).toFixed(1)}% (computable back to market start)
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -260,15 +312,14 @@ function DailyFlowsChart({ chartData }) {
       </div>
       <div className="chart-container">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={filtered} margin={{ top: 10, right: 30, left: 20, bottom: 5 }} barCategoryGap="20%">
+          <ComposedChart data={filtered} margin={{ top: 10, right: 30, left: 20, bottom: 5 }} barCategoryGap="20%">
             <CartesianGrid strokeDasharray="3 3" stroke="#2f3542" />
             <XAxis dataKey="displayDate" stroke="#71767b" tick={{ fill: '#71767b', fontSize: 11 }} tickMargin={10} interval="preserveStartEnd" />
             <YAxis stroke="#71767b" tick={{ fill: '#71767b', fontSize: 11 }} tickFormatter={tickFmt} width={70} />
-            <Tooltip
-              contentStyle={{ backgroundColor: '#1a1f2e', border: '1px solid #2f3542', borderRadius: 8, color: '#e7e9ea' }}
-              labelStyle={{ color: '#71767b' }}
-              formatter={(v, name) => [v != null ? formatUSD(v) : '—', name]}
-            />
+            <Tooltip content={<FlowsTooltip
+              showInterest={active.has('dailyInterest')}
+              showIncentives={active.has('incentives')}
+              showNim={active.has('nimRevenue')} />} />
             <Legend wrapperStyle={{ color: '#e7e9ea' }} />
             {active.has('dailyInterest') && (
               <Bar dataKey="dailyInterest" fill={INTEREST_COLOR} name="Borrow Interest Paid" radius={[3, 3, 0, 0]} />
@@ -279,7 +330,12 @@ function DailyFlowsChart({ chartData }) {
             {active.has('incentives') && (
               <Bar dataKey="outOfPocket" stackId="incentives" fill={OOP_COLOR} name="Out-of-pocket Incentives" radius={[3, 3, 0, 0]} />
             )}
-          </BarChart>
+            {active.has('nimRevenue') && (
+              <Line type="monotone" dataKey="nimRevenue" stroke={NIM_COLOR} strokeWidth={2}
+                strokeDasharray="5 3" dot={false} name="NIM Revenue (idle USDG)"
+                connectNulls activeDot={{ r: 4, fill: NIM_COLOR, strokeWidth: 0 }} />
+            )}
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
     </section>
@@ -314,13 +370,15 @@ export default function AaveUsdgTab() {
       ? Math.max(totalSupply - totalDebt, 0)
       : null;
     // Daily revenue thrown off by the idle USDG at the NIM rate.
-    const nimCapacity = idle != null ? idle * NIM_APY / 365 : null;
+    // This is computable for every day we have supply + debt — no Merkl data required,
+    // so it extends as far back as the idle-USDG history goes.
+    const nimRevenue = idle != null ? idle * NIM_APY / 365 : null;
 
     let nimFunded = null;   // portion of the day's incentives covered by NIM revenue
     let outOfPocket = null; // incremental spend on top of NIM revenue
-    if (merklRewards != null && nimCapacity != null) {
-      nimFunded   = Math.min(nimCapacity, merklRewards);
-      outOfPocket = Math.max(merklRewards - nimCapacity, 0);
+    if (merklRewards != null && nimRevenue != null) {
+      nimFunded   = Math.min(nimRevenue, merklRewards);
+      outOfPocket = Math.max(merklRewards - nimRevenue, 0);
     }
 
     return {
@@ -333,6 +391,7 @@ export default function AaveUsdgTab() {
       totalSupply,
       supplyApy: row.supply_apy != null ? parseFloat(row.supply_apy) : null,
       idle,
+      nimRevenue,
       nimFunded,
       outOfPocket,
     };
