@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  ComposedChart, Area, Line,
+  ComposedChart, Area, Line, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, ReferenceLine, ReferenceArea
 } from 'recharts';
@@ -231,100 +231,73 @@ function LegendChip({ color, line, label }) {
   );
 }
 
-function DsTooltip({ active, payload, label }) {
+function DivergingTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   const r = payload[0].payload;
-  if (r.demand == null) return null;
-  const tracked = r.totalSubsidy != null; // out-of-pocket known this day
-  const net = tracked ? r.demand - r.totalSubsidy : null;
-  const coverage = tracked && r.totalSubsidy ? (r.demand / r.totalSubsidy) * 100 : null;
+  const tracked = r.oopNeg != null;
+  const positiveTotal = (r.demand ?? 0) + (r.nimRevenue ?? 0);
+  const net = tracked ? positiveTotal - r.outOfPocket : null;
+  const coverage = tracked && r.outOfPocket ? (positiveTotal / r.outOfPocket) * 100 : null;
   const positive = net != null && net >= 0;
 
   return (
-    <div style={{ ...tooltipBase.contentStyle, padding: '10px 14px', minWidth: 258 }}>
+    <div style={{ ...tooltipBase.contentStyle, padding: '10px 14px', minWidth: 240 }}>
       <div style={{ color: '#71767b', marginBottom: 8, fontSize: 12 }}>{label}</div>
 
-      <TipRow color={DEMAND_COLOR} label="Demand — borrower interest" value={r.demand} />
-
-      <div style={{ marginTop: 8 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16,
-          fontWeight: 600, fontSize: 12, color: '#e7e9ea',
-          borderBottom: '1px solid #2f3542', paddingBottom: 4, marginBottom: 4 }}>
-          <span>Subsidy {tracked ? '(total)' : ''}</span>
-          <span>{tracked ? formatUSD(r.totalSubsidy) : '—'}</span>
-        </div>
-        <div style={{ paddingLeft: 10 }}>
-          <TipRow color={NIM_SUB_COLOR} label="NIM share" value={r.nimRevenue} />
-          <TipRow color={OOP_SUB_COLOR}
-            label={tracked ? 'Out-of-pocket' : 'Out-of-pocket (not tracked)'}
-            value={tracked ? r.outOfPocket : null} dim={!tracked} />
-        </div>
+      <TipRow color={DEMAND_COLOR} label="Borrow interest" value={r.demand} />
+      <TipRow color={NIM_SUB_COLOR} label={`NIM share (idle × ${(NIM_APY * 100).toFixed(1)}%)`} value={r.nimRevenue} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 600,
+        color: '#e7e9ea', paddingTop: 4, marginTop: 4, borderTop: '1px solid #2f3542' }}>
+        <span>Total above $0</span>
+        <span>{formatUSD(positiveTotal)}/day</span>
       </div>
 
       {tracked ? (
-        <div style={{ marginTop: 8, paddingTop: 6, borderTop: '1px solid #2f3542' }}>
-          {r.netOoP != null && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, fontSize: 11, color: '#8b95a1', marginBottom: 4 }}>
-              <span>Net excl. NIM (demand − out-of-pocket)</span>
-              <span>{r.netOoP >= 0 ? '+' : '−'}{formatUSD(Math.abs(r.netOoP))}/day</span>
-            </div>
-          )}
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, fontSize: 12, fontWeight: 600,
+        <>
+          <div style={{ marginTop: 8 }}>
+            <TipRow color={DEFICIT_COLOR} label="Out-of-pocket incentives" value={r.outOfPocket} />
+          </div>
+          <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid #2f3542',
+            display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 600,
             color: positive ? SURPLUS_COLOR : DEFICIT_COLOR }}>
-            <span>{positive ? 'Self-sustaining' : 'Net subsidy'}{coverage != null ? ` · ${coverage.toFixed(0)}% covered` : ''}</span>
+            <span>{positive ? 'Net positive' : 'Net cost'}{coverage != null ? ` · ${coverage.toFixed(0)}% covered` : ''}</span>
             <span>{positive ? '+' : '−'}{formatUSD(Math.abs(net))}/day</span>
           </div>
-        </div>
+        </>
       ) : (
-        <div style={{ marginTop: 8, paddingTop: 6, borderTop: '1px solid #2f3542', fontSize: 11, color: '#71767b' }}>
-          Out-of-pocket incentives not tracked before Merkl coverage began — total subsidy unknown.
+        <div style={{ fontSize: 11, color: '#71767b', fontStyle: 'italic', marginTop: 6 }}>
+          Out-of-pocket not tracked before Merkl coverage began.
         </div>
       )}
     </div>
   );
 }
 
-// Net daily cash flow chart. mode 'two' also plots demand − out-of-pocket (the NIM-cushion
-// reading); mode 'single' shows only the total net line. Goal in both: the line crosses $0.
-function NetCashFlowChart({ chartData, mode, optionTag }) {
-  const twoLine = mode === 'two';
+function DivergingBarChart({ chartData }) {
   const [lookback, setLookback] = useState(30);
   const filtered = lookback === null ? chartData : chartData.slice(-lookback);
-
-  const netTick = v => (v < 0 ? '−' : '') + '$' +
+  const dollarTick = v => (v < 0 ? '−' : '') + '$' +
     (Math.abs(v) >= 1000 ? (Math.abs(v) / 1000).toFixed(1) + 'K' : Math.abs(v).toFixed(0));
 
-  // Out-of-pocket only tracked from a certain day (Merkl API lookback) — shade the unknown span.
-  const trackedIdx = filtered.findIndex(d => d.netTotal != null);
+  const trackedIdx = filtered.findIndex(d => d.oopNeg != null);
   const trackingStart = trackedIdx >= 0 ? filtered[trackedIdx] : null;
   const untrackedFrom = trackedIdx > 0 ? filtered[0] : null;
 
-  const latest = [...filtered].reverse().find(d => d.netTotal != null);
-  const net = latest ? latest.netTotal : null;
-  const coverage = latest && latest.totalSubsidy ? (latest.demand / latest.totalSubsidy) * 100 : null;
+  const latest = [...filtered].reverse().find(d => d.oopNeg != null);
+  const positiveTotal = latest ? (latest.demand ?? 0) + (latest.nimRevenue ?? 0) : null;
+  const net = latest ? positiveTotal - latest.outOfPocket : null;
+  const coverage = latest && latest.outOfPocket ? (positiveTotal / latest.outOfPocket) * 100 : null;
   const positive = net != null && net >= 0;
   const statusColor = positive ? SURPLUS_COLOR : DEFICIT_COLOR;
-
-  // Mark the start of the current self-sustaining streak, if we're above water now.
-  let crossover = null;
-  if (positive) {
-    for (let i = filtered.length - 1; i >= 0 && filtered[i].netTotal >= 0; i--) crossover = filtered[i];
-  }
 
   return (
     <section className="chart-section">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
         <div>
-          <h3 style={{ margin: 0 }}>
-            {optionTag && <span style={{ color: '#00d4aa', marginRight: 8 }}>{optionTag}</span>}
-            Net cash flow — {twoLine ? 'two lines (keeps NIM vs out-of-pocket)' : 'single line'}
-          </h3>
-          <p style={{ color: '#71767b', fontSize: 12, margin: '2px 0 0', maxWidth: 680 }}>
-            Borrower interest minus subsidy, per day. Below $0 we're paying to bootstrap; the market is
-            self-sustaining once the line crosses above $0.
-            {twoLine
-              ? ' Solid = demand − total subsidy (full goal); dashed = demand − out-of-pocket only (the gap between them is the NIM share).'
-              : ' Line = demand − total subsidy (NIM share + out-of-pocket).'}
+          <h3 style={{ margin: 0 }}>Daily incentive position</h3>
+          <p style={{ color: '#71767b', fontSize: 12, margin: '2px 0 0', maxWidth: 640 }}>
+            Above $0 → flows to suppliers: borrow interest + NIM share from idle USDG.
+            Below $0 → out-of-pocket incentive spend. Break-even when the positive stack clears $0.
             {trackingStart && ` Out-of-pocket tracked from ${trackingStart.displayDate}.`}
           </p>
         </div>
@@ -340,63 +313,50 @@ function NetCashFlowChart({ chartData, mode, optionTag }) {
         </div>
       </div>
 
-      {/* Headline — net position in dollars + how far to break-even */}
       {net != null && (
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', margin: '12px 0 6px' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', margin: '12px 0 8px' }}>
           <span style={{ fontSize: 24, fontWeight: 700, color: statusColor }}>
             {net < 0 ? '−' : '+'}{formatUSD(Math.abs(net))}/day
           </span>
-          <span style={{ color: '#e7e9ea', fontSize: 13 }}>
-            net cash flow{coverage != null ? ` · demand covers ${coverage.toFixed(0)}% of subsidy` : ''}
+          <span style={{ color: '#c4c8cc', fontSize: 13 }}>
+            net · {formatUSD(positiveTotal)}/day positive vs {formatUSD(latest.outOfPocket)}/day out-of-pocket
           </span>
-          <span style={{ color: '#71767b', fontSize: 12 }}>· goal: reach $0 {positive ? '✓ self-sustaining' : ''}</span>
+          {coverage != null && (
+            <span style={{ color: '#71767b', fontSize: 12 }}>· {coverage.toFixed(0)}% covered · goal: 100%</span>
+          )}
         </div>
       )}
 
-      {/* Legend */}
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', margin: '8px 0', fontSize: 12, color: '#a9b1ba' }}>
-        <LegendChip color="#e7e9ea" line label="Net: demand − total subsidy" />
-        {twoLine && <LegendChip color={NIM_SUB_COLOR} line label="Net excl. NIM: demand − out-of-pocket" />}
-        <LegendChip color={SURPLUS_COLOR} label="Above $0 (self-sustaining)" />
-        <LegendChip color={DEFICIT_COLOR} label="Below $0 (net cost)" />
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', margin: '4px 0 10px', fontSize: 12, color: '#a9b1ba' }}>
+        <LegendChip color={DEMAND_COLOR} label="Borrow interest" />
+        <LegendChip color={NIM_SUB_COLOR} label={`NIM share (idle USDG × ${(NIM_APY * 100).toFixed(1)}%)`} />
+        <LegendChip color={DEFICIT_COLOR} label="Out-of-pocket incentives" />
       </div>
 
       <div className="chart-container">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={filtered} margin={{ top: 10, right: 30, left: 20, bottom: 5 }}>
+          <ComposedChart data={filtered} margin={{ top: 10, right: 30, left: 20, bottom: 5 }} barCategoryGap="25%">
             <CartesianGrid strokeDasharray="3 3" stroke="#2f3542" />
             <XAxis dataKey="displayDate" stroke="#71767b" tick={{ fill: '#71767b', fontSize: 11 }} tickMargin={10} interval="preserveStartEnd" />
-            <YAxis stroke="#71767b" tick={{ fill: '#71767b', fontSize: 11 }} tickFormatter={netTick} width={70}
-              domain={[min => Math.min(0, min) * 1.1, max => Math.max(0, max) * 1.1]} />
-            <Tooltip content={<DsTooltip />} />
+            <YAxis stroke="#71767b" tick={{ fill: '#71767b', fontSize: 11 }} tickFormatter={dollarTick} width={70} />
+            <Tooltip content={<DivergingTooltip />} />
 
             {untrackedFrom && trackingStart && (
               <ReferenceArea x1={untrackedFrom.displayDate} x2={trackingStart.displayDate}
                 fill="#71767b" fillOpacity={0.08} stroke="none"
-                label={{ value: 'out-of-pocket not tracked', fill: '#71767b', fontSize: 10, position: 'insideTop' }} />
+                label={{ value: 'out-of-pocket not tracked', fill: '#71767b', fontSize: 10, position: 'insideTopLeft' }} />
             )}
 
-            {/* Sign-colored fill to the $0 baseline: red below, green above */}
-            <Area dataKey="netNeg" baseValue={0} stroke="none" fill={DEFICIT_COLOR} fillOpacity={0.22} isAnimationActive={false} connectNulls={false} />
-            <Area dataKey="netPos" baseValue={0} stroke="none" fill={SURPLUS_COLOR} fillOpacity={0.22} isAnimationActive={false} connectNulls={false} />
+            {/* Break-even line — the finish */}
+            <ReferenceLine y={0} stroke="#e7e9ea" strokeWidth={1.5}
+              label={{ value: '← break-even', fill: '#e7e9ea', fontSize: 11, position: 'insideBottomLeft' }} />
 
-            {/* The goal: break-even at $0 */}
-            <ReferenceLine y={0} stroke={SURPLUS_COLOR} strokeWidth={1.5}
-              label={{ value: 'break-even ($0)', fill: SURPLUS_COLOR, fontSize: 11, position: 'insideTopLeft' }} />
+            {/* Positive stack: borrow interest (base) + NIM share (top) */}
+            <Bar dataKey="demand"     stackId="pos" fill={DEMAND_COLOR}   fillOpacity={0.85} isAnimationActive={false} />
+            <Bar dataKey="nimRevenue" stackId="pos" fill={NIM_SUB_COLOR}  fillOpacity={0.65} radius={[3, 3, 0, 0]} isAnimationActive={false} />
 
-            {twoLine && (
-              <Line dataKey="netOoP" type="monotone" stroke={NIM_SUB_COLOR} strokeWidth={1.5}
-                strokeDasharray="5 3" dot={{ r: 2, fill: NIM_SUB_COLOR, strokeWidth: 0 }}
-                isAnimationActive={false} connectNulls={false} activeDot={{ r: 4 }} />
-            )}
-            <Line dataKey="netTotal" type="monotone" stroke="#e7e9ea" strokeWidth={2.5}
-              dot={{ r: 2.5, fill: '#e7e9ea', strokeWidth: 0 }} isAnimationActive={false}
-              connectNulls={false} activeDot={{ r: 4, fill: '#e7e9ea', strokeWidth: 0 }} />
-
-            {crossover && (
-              <ReferenceLine x={crossover.displayDate} stroke={SURPLUS_COLOR} strokeDasharray="4 3"
-                label={{ value: 'break-even', fill: SURPLUS_COLOR, fontSize: 11, position: 'insideTopRight' }} />
-            )}
+            {/* Negative bar: out-of-pocket spend */}
+            <Bar dataKey="oopNeg" fill={DEFICIT_COLOR} fillOpacity={0.75} radius={[0, 0, 3, 3]} isAnimationActive={false} />
           </ComposedChart>
         </ResponsiveContainer>
       </div>
@@ -450,33 +410,16 @@ export default function AaveUsdgTab() {
       outOfPocket = Math.max(merklRewards - nimRevenue, 0);
     }
 
-    // ── Demand vs Subsidy framing ──────────────────────────────────────────
-    // Demand  = what borrowers voluntarily pay (organic).
-    // Subsidy = NIM share (sustainable) + out-of-pocket incentives (unsustainable).
-    // The story is the signed gap between them: deficit while we're bootstrapping,
-    // surplus once the market pays its own way.
-    //
-    // Out-of-pocket is UNKNOWN before Merkl tracking begins (the API has no lookback) —
-    // NOT zero. So total subsidy / deficit / coverage are only defined once it's tracked;
-    // earlier days show demand + NIM as context but make no self-sustaining claim.
-    const demand       = row.daily_interest;
-    const oopTracked   = merklRewards != null;
-    const oopArea      = oopTracked ? outOfPocket : null;
+    // Diverging bar chart framing:
+    //   above $0: borrow interest (demand) + NIM share — both flow to suppliers
+    //   below $0: out-of-pocket incentives — actual cash cost
+    //   break-even: positive stack = negative bar depth
+    // Out-of-pocket is UNKNOWN before Merkl tracking begins — not zero.
+    const demand     = row.daily_interest;
+    const oopTracked = merklRewards != null;
+    const oopArea    = oopTracked ? outOfPocket : null;
     const totalSubsidy = (nimRevenue != null && oopTracked) ? nimRevenue + outOfPocket : null;
-
-    // Net daily cash flow: what the market throws off minus what we spend. Goal is to cross 0.
-    //   netTotal = demand − (NIM + out-of-pocket)   → full self-sustaining when ≥ 0
-    //   netOoP   = demand − out-of-pocket            → covers the *unsustainable* spend when ≥ 0
-    // The vertical gap between the two lines is the sustainable NIM cushion.
-    let netTotal = null, netOoP = null, netNeg = null, netPos = null;
-    if (demand != null && totalSubsidy != null) {
-      netTotal = demand - totalSubsidy;
-      netNeg   = Math.min(netTotal, 0); // red fill (below break-even)
-      netPos   = Math.max(netTotal, 0); // green fill (above break-even)
-    }
-    if (demand != null && oopTracked) {
-      netOoP = demand - outOfPocket;
-    }
+    const oopNeg = oopTracked ? -outOfPocket : null;
 
     return {
       date: row.date,
@@ -491,13 +434,10 @@ export default function AaveUsdgTab() {
       nimRevenue,
       nimFunded,
       outOfPocket,
+      oopNeg,
       demand,
       oopArea,
       totalSubsidy,
-      netTotal,
-      netOoP,
-      netNeg,
-      netPos,
     };
   });
 
@@ -609,13 +549,8 @@ export default function AaveUsdgTab() {
             </div>
           </section>
 
-          {/* Chart 2: Net cash flow — two candidate designs to compare, then keep one */}
-          <div style={{ margin: '8px 0 -8px', padding: '8px 12px', border: '1px dashed #2f3542', borderRadius: 8,
-            color: '#71767b', fontSize: 12, background: 'rgba(0,212,170,0.04)' }}>
-            🔍 Two candidate designs below — same data, different framing. Tell me which to keep and I'll remove the other.
-          </div>
-          <NetCashFlowChart chartData={chartData} mode="two"    optionTag="Option A" />
-          <NetCashFlowChart chartData={chartData} mode="single" optionTag="Option B" />
+          {/* Chart 2: Daily incentive position — diverging bar */}
+          <DivergingBarChart chartData={chartData} />
 
           {/* Chart 3: Supply amount + supply rate */}
           <SupplyChart chartData={chartData} />
