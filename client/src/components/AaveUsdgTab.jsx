@@ -260,7 +260,10 @@ function DivergingTooltip({ active, payload, label }) {
           <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid #2f3542',
             display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 600,
             color: positive ? SURPLUS_COLOR : DEFICIT_COLOR }}>
-            <span>{positive ? 'Net positive' : 'Net cost'}{coverage != null ? ` · ${coverage.toFixed(0)}% covered` : ''}</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ display: 'inline-block', width: 12, height: 2.5, background: '#e7e9ea', borderRadius: 2 }} />
+              {positive ? 'Net positive' : 'Net cost'}{coverage != null ? ` · ${coverage.toFixed(0)}% covered` : ''}
+            </span>
             <span>{positive ? '+' : '−'}{formatUSD(Math.abs(net))}/day</span>
           </div>
         </>
@@ -331,11 +334,12 @@ function DivergingBarChart({ chartData }) {
         <LegendChip color={DEMAND_COLOR} label="Borrow interest" />
         <LegendChip color={NIM_SUB_COLOR} label={`NIM share (idle USDG × ${(NIM_APY * 100).toFixed(1)}%)`} />
         <LegendChip color={DEFICIT_COLOR} label="Out-of-pocket incentives" />
+        <LegendChip color="#e7e9ea" line label="Net position" />
       </div>
 
       <div className="chart-container">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={filtered} margin={{ top: 10, right: 30, left: 20, bottom: 5 }} barCategoryGap="25%">
+          <ComposedChart data={filtered} margin={{ top: 10, right: 30, left: 20, bottom: 5 }} barCategoryGap="8%">
             <CartesianGrid strokeDasharray="3 3" stroke="#2f3542" />
             <XAxis dataKey="displayDate" stroke="#71767b" tick={{ fill: '#71767b', fontSize: 11 }} tickMargin={10} interval="preserveStartEnd" />
             <YAxis stroke="#71767b" tick={{ fill: '#71767b', fontSize: 11 }} tickFormatter={dollarTick} width={70} />
@@ -357,6 +361,11 @@ function DivergingBarChart({ chartData }) {
 
             {/* Negative bar: out-of-pocket spend */}
             <Bar dataKey="oopNeg" fill={DEFICIT_COLOR} fillOpacity={0.75} radius={[0, 0, 3, 3]} isAnimationActive={false} />
+
+            {/* Net line — only over tracked days where the comparison is complete */}
+            <Line dataKey="netPosition" type="monotone" stroke="#e7e9ea" strokeWidth={2.5}
+              dot={{ r: 3.5, fill: '#e7e9ea', strokeWidth: 0 }} isAnimationActive={false}
+              connectNulls={false} activeDot={{ r: 5, fill: '#e7e9ea', strokeWidth: 0 }} />
           </ComposedChart>
         </ResponsiveContainer>
       </div>
@@ -420,6 +429,11 @@ export default function AaveUsdgTab() {
     const oopArea    = oopTracked ? outOfPocket : null;
     const totalSubsidy = (nimRevenue != null && oopTracked) ? nimRevenue + outOfPocket : null;
     const oopNeg = oopTracked ? -outOfPocket : null;
+    // Net = positive stack + negative bar; null when OOP unknown so the line only
+    // appears over the tracked region where the comparison is complete.
+    const netPosition = oopTracked && nimRevenue != null
+      ? (demand ?? 0) + nimRevenue - outOfPocket
+      : null;
 
     return {
       date: row.date,
@@ -435,6 +449,7 @@ export default function AaveUsdgTab() {
       nimFunded,
       outOfPocket,
       oopNeg,
+      netPosition,
       demand,
       oopArea,
       totalSubsidy,
