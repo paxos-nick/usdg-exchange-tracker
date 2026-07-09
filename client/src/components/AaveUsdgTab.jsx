@@ -122,19 +122,22 @@ function downloadCsv(rows, lookback) {
 
 const SUPPLY_COLOR = '#3b82f6';
 
+const TOTAL_APY_COLOR = '#00d4aa'; // bold teal for total supply APY line
+
 function SupplyChart({ chartData }) {
   const [lookback, setLookback] = useState(30);
 
   const filtered = lookback === null ? chartData : chartData.slice(-lookback);
   const hasSupply = filtered.some(d => d.totalSupply != null);
+  const hasIncentiveApy = filtered.some(d => d.totalSupplyApyChart != null);
 
   return (
     <section className="chart-section">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
         <div>
-          <h3 style={{ margin: 0 }}>Supply TVL & Organic Supply Rate</h3>
+          <h3 style={{ margin: 0 }}>Supply TVL & Supply Rates</h3>
           <p style={{ color: '#71767b', fontSize: 12, margin: '2px 0 0' }}>
-            Total USDG supplied (left) and organic supply APY = borrowAPY × utilization (right)
+            Total USDG supplied (left) · organic APY from interest, incentive boost, and total supply APY (right)
           </p>
         </div>
         <div style={{ display: 'flex', gap: 4, background: '#1a1f2e', borderRadius: 6, padding: 3 }}>
@@ -153,12 +156,18 @@ function SupplyChart({ chartData }) {
       ) : (
         <div className="chart-container">
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={filtered} margin={{ top: 10, right: 60, left: 20, bottom: 5 }}>
+            <ComposedChart data={filtered} margin={{ top: 10, right: 65, left: 20, bottom: 5 }}>
               <defs>
                 <linearGradient id="supplyGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%"  stopColor={SUPPLY_COLOR} stopOpacity={0.2} />
                   <stop offset="95%" stopColor={SUPPLY_COLOR} stopOpacity={0.02} />
                 </linearGradient>
+                {hasIncentiveApy && (
+                  <linearGradient id="incentiveApyGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor={TOTAL_APY_COLOR} stopOpacity={0.18} />
+                    <stop offset="95%" stopColor={TOTAL_APY_COLOR} stopOpacity={0.02} />
+                  </linearGradient>
+                )}
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#2f3542" />
               <XAxis dataKey="displayDate" stroke="#71767b" tick={{ fill: '#71767b', fontSize: 11 }} tickMargin={10} interval="preserveStartEnd" />
@@ -167,26 +176,53 @@ function SupplyChart({ chartData }) {
                 tickFormatter={formatUSDShort} width={75}
                 label={{ value: 'Supplied', angle: -90, position: 'insideLeft', fill: SUPPLY_COLOR, fontSize: 11, dx: -8 }} />
               <YAxis yAxisId="apy" orientation="right"
-                stroke={APY_GREEN} tick={{ fill: APY_GREEN, fontSize: 11 }}
-                tickFormatter={v => v.toFixed(2) + '%'} width={60}
-                label={{ value: 'Supply APY', angle: 90, position: 'insideRight', fill: APY_GREEN, fontSize: 11, dx: 10 }} />
+                stroke="#71767b" tick={{ fill: '#71767b', fontSize: 11 }}
+                tickFormatter={v => v.toFixed(1) + '%'} width={60}
+                label={{ value: 'APY', angle: 90, position: 'insideRight', fill: '#71767b', fontSize: 11, dx: 10 }} />
               <Tooltip
                 contentStyle={{ backgroundColor: '#1a1f2e', border: '1px solid #2f3542', borderRadius: 8, color: '#e7e9ea' }}
                 labelStyle={{ color: '#71767b' }}
                 formatter={(v, name) => {
-                  if (name === 'totalSupply') return [v != null ? formatUSD(v) : '—', 'Supply TVL'];
-                  if (name === 'supplyApy')  return [v != null ? v.toFixed(4) + '%' : '—', 'Supply APY'];
+                  if (v == null) return ['—', name];
+                  if (name === 'totalSupply')         return [formatUSD(v), 'Supply TVL'];
+                  if (name === 'supplyApy')           return [v.toFixed(3) + '%', 'Organic APY'];
+                  if (name === 'incentiveBoostApy')   return [v.toFixed(3) + '%', 'Incentive boost'];
+                  if (name === 'totalSupplyApyChart') return [v.toFixed(3) + '%', 'Total supply APY'];
                   return [v, name];
                 }}
               />
               <Legend wrapperStyle={{ color: '#e7e9ea' }}
-                formatter={v => v === 'totalSupply' ? 'Supply TVL' : 'Supply APY'} />
+                formatter={v => ({
+                  totalSupply: 'Supply TVL',
+                  supplyApy: 'Organic APY',
+                  incentiveBoostApy: 'Incentive boost',
+                  totalSupplyApyChart: 'Total supply APY',
+                }[v] ?? v)} />
+
+              {/* Supply TVL area */}
               <Area yAxisId="supply" type="monotone" dataKey="totalSupply"
                 stroke={SUPPLY_COLOR} strokeWidth={2} fill="url(#supplyGrad)"
                 dot={false} activeDot={{ r: 4, fill: SUPPLY_COLOR, strokeWidth: 0 }} name="totalSupply" />
+
+              {/* Organic APY — thin dashed baseline */}
               <Line yAxisId="apy" type="monotone" dataKey="supplyApy"
-                stroke={APY_GREEN} strokeWidth={2} dot={false}
-                activeDot={{ r: 4, fill: APY_GREEN, strokeWidth: 0 }} name="supplyApy" />
+                stroke={APY_GREEN} strokeWidth={1.5} strokeDasharray="4 3" dot={false}
+                activeDot={{ r: 3, fill: APY_GREEN, strokeWidth: 0 }} name="supplyApy" />
+
+              {/* Incentive boost — fills the gap between organic and total */}
+              {hasIncentiveApy && (
+                <Area yAxisId="apy" type="monotone" dataKey="totalSupplyApyChart"
+                  stroke="none" fill="url(#incentiveApyGrad)" dot={false}
+                  baseValue="dataMin" isAnimationActive={false} name="incentiveBoostApy"
+                  legendType="none" tooltipType="none" />
+              )}
+
+              {/* Total supply APY — bold teal line on top */}
+              {hasIncentiveApy && (
+                <Line yAxisId="apy" type="monotone" dataKey="totalSupplyApyChart"
+                  stroke={TOTAL_APY_COLOR} strokeWidth={2.5} dot={false}
+                  activeDot={{ r: 4, fill: TOTAL_APY_COLOR, strokeWidth: 0 }} name="totalSupplyApyChart" />
+              )}
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -457,6 +493,17 @@ export default function AaveUsdgTab() {
       ? (demand ?? 0) + nimRevenue - outOfPocket
       : null;
 
+    // Per-day total supply APY = total Merkl spend (OOP + NIM) annualised over supply TVL.
+    // For Merkl-tracked days: merklRewards is total; for historical: reconstruct as OOP + NIM.
+    const totalDailyMerkl = merklRewards ??
+      (outOfPocket != null && nimRevenue != null ? outOfPocket + nimRevenue : null);
+    const totalSupplyApyChart = totalDailyMerkl != null && totalSupply
+      ? totalDailyMerkl * 365 / totalSupply * 100
+      : null;
+    const incentiveBoostApy = totalSupplyApyChart != null && supplyApy != null
+      ? Math.max(totalSupplyApyChart - supplyApy, 0)
+      : null;
+
     return {
       date: row.date,
       displayDate: formatDate(row.date),
@@ -473,6 +520,8 @@ export default function AaveUsdgTab() {
       oopNeg,
       oopSource,
       netPosition,
+      totalSupplyApyChart,
+      incentiveBoostApy,
       demand,
       oopArea,
       totalSubsidy,
