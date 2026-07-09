@@ -235,8 +235,9 @@ function DivergingTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   const r = payload[0].payload;
   const tracked = r.oopNeg != null;
+  const posTotal = (r.demand ?? 0) + (r.nimRevenue ?? 0);
   const net = tracked ? (r.demand ?? 0) - r.outOfPocket : null;
-  const coverage = tracked && r.outOfPocket ? ((r.demand ?? 0) / r.outOfPocket) * 100 : null;
+  const coverage = tracked && r.merklRewards ? (posTotal / r.merklRewards) * 100 : null;
   const positive = net != null && net >= 0;
 
   return (
@@ -244,26 +245,23 @@ function DivergingTooltip({ active, payload, label }) {
       <div style={{ color: '#71767b', marginBottom: 8, fontSize: 12 }}>{label}</div>
 
       <TipRow color={DEMAND_COLOR} label="Borrow interest" value={r.demand} />
+      <TipRow color={NIM_SUB_COLOR} label={`NIM share (idle × ${(NIM_APY * 100).toFixed(1)}%)`} value={r.nimRevenue} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 600,
+        color: '#e7e9ea', paddingTop: 4, marginTop: 4, borderTop: '1px solid #2f3542' }}>
+        <span>Total above $0</span><span>{formatUSD(posTotal)}/day</span>
+      </div>
 
       {tracked ? (
         <>
-          <div style={{ marginTop: 8, paddingTop: 6, borderTop: '1px solid #2f3542' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12,
-              fontWeight: 600, color: '#e7e9ea', marginBottom: 4 }}>
-              <span>Out-of-pocket incentives</span>
-              <span>{formatUSD(r.outOfPocket)}/day</span>
-            </div>
-            <div style={{ paddingLeft: 10 }}>
-              <TipRow color={MERKL_COLOR} label="Merkl distributed" value={r.merklRewards} />
-              <TipRow color={NIM_SUB_COLOR} label={`minus NIM share (idle × ${(NIM_APY * 100).toFixed(1)}%)`} value={r.nimRevenue} dim />
-            </div>
+          <div style={{ marginTop: 8 }}>
+            <TipRow color={DEFICIT_COLOR} label="Out-of-pocket (Merkl − NIM)" value={r.outOfPocket} />
           </div>
           <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid #2f3542',
             display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 600,
             color: positive ? SURPLUS_COLOR : DEFICIT_COLOR }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ display: 'inline-block', width: 12, height: 2.5, background: '#e7e9ea', borderRadius: 2 }} />
-              {positive ? 'Net positive' : 'Net cost'}{coverage != null ? ` · ${coverage.toFixed(0)}% covered` : ''}
+              {positive ? 'Net positive' : 'Net cost'}{coverage != null ? ` · ${coverage.toFixed(0)}% of Merkl covered` : ''}
             </span>
             <span>{positive ? '+' : '−'}{formatUSD(Math.abs(net))}/day</span>
           </div>
@@ -288,8 +286,10 @@ function DivergingBarChart({ chartData }) {
   const untrackedFrom = trackedIdx > 0 ? filtered[0] : null;
 
   const latest = [...filtered].reverse().find(d => d.oopNeg != null);
+  const positiveTotal = latest ? (latest.demand ?? 0) + (latest.nimRevenue ?? 0) : null;
   const net = latest ? (latest.demand ?? 0) - latest.outOfPocket : null;
-  const coverage = latest && latest.outOfPocket ? ((latest.demand ?? 0) / latest.outOfPocket) * 100 : null;
+  // Coverage: how much of total Merkl spend is covered by demand + NIM. Break-even at 100%.
+  const coverage = latest && latest.merklRewards ? (positiveTotal / latest.merklRewards) * 100 : null;
   const positive = net != null && net >= 0;
   const statusColor = positive ? SURPLUS_COLOR : DEFICIT_COLOR;
 
@@ -322,7 +322,7 @@ function DivergingBarChart({ chartData }) {
             {net < 0 ? '−' : '+'}{formatUSD(Math.abs(net))}/day
           </span>
           <span style={{ color: '#c4c8cc', fontSize: 13 }}>
-            net · {formatUSD(latest.demand)}/day demand vs {formatUSD(latest.outOfPocket)}/day out-of-pocket
+            net · {formatUSD(positiveTotal)}/day in (demand + NIM) vs {formatUSD(latest.merklRewards)}/day Merkl spend
           </span>
           {coverage != null && (
             <span style={{ color: '#71767b', fontSize: 12 }}>· {coverage.toFixed(0)}% covered · goal: 100%</span>
@@ -332,7 +332,8 @@ function DivergingBarChart({ chartData }) {
 
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', margin: '4px 0 10px', fontSize: 12, color: '#a9b1ba' }}>
         <LegendChip color={DEMAND_COLOR} label="Borrow interest" />
-        <LegendChip color={DEFICIT_COLOR} label={`Out-of-pocket (Merkl − NIM share)`} />
+        <LegendChip color={NIM_SUB_COLOR} label={`NIM share (idle USDG × ${(NIM_APY * 100).toFixed(1)}%)`} />
+        <LegendChip color={DEFICIT_COLOR} label="Out-of-pocket (Merkl − NIM)" />
         <LegendChip color="#e7e9ea" line label="Net position" />
       </div>
 
@@ -354,8 +355,9 @@ function DivergingBarChart({ chartData }) {
             <ReferenceLine y={0} stroke="#4b5563" strokeWidth={1} strokeDasharray="4 3"
               label={{ value: 'break-even', fill: '#6b7280', fontSize: 11, position: 'insideBottomLeft' }} />
 
-            {/* Positive bar: borrow interest — NIM is already baked into the reduced OOP bar */}
-            <Bar dataKey="demand" fill={DEMAND_COLOR} fillOpacity={0.85} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+            {/* Positive stack: borrow interest (base) + NIM share (top) */}
+            <Bar dataKey="demand"     stackId="pos" fill={DEMAND_COLOR}  fillOpacity={0.85} isAnimationActive={false} />
+            <Bar dataKey="nimRevenue" stackId="pos" fill={NIM_SUB_COLOR} fillOpacity={0.65} radius={[3, 3, 0, 0]} isAnimationActive={false} />
 
             {/* Negative bar: out-of-pocket spend */}
             <Bar dataKey="oopNeg" fill={DEFICIT_COLOR} fillOpacity={0.75} radius={[0, 0, 3, 3]} isAnimationActive={false} />
