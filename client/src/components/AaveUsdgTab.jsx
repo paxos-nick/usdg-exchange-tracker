@@ -8,7 +8,6 @@ import { useAaveUsdg, useAaveUsdgHistory } from '../hooks/useVolumeData';
 
 const AAVE_PURPLE = '#b6509e';
 const APY_GREEN   = '#10b981';
-const SPOKE_COLORS = ['#00d4aa', '#f5a623', '#7c3aed', '#3b82f6'];
 
 function formatUSD(v) {
   if (!v && v !== 0) return '—';
@@ -494,17 +493,25 @@ export default function AaveUsdgTab() {
     </div>
   );
 
-  const { totalVariableDebt, variableBorrowApy, dailyInterestCost, spokeBreakdown } = live || {};
+  const { totalVariableDebt, variableBorrowApy, dailyInterestCost,
+          totalSupply, organicSupplyApy, idleUsdg } = live || {};
 
-  // Most recent day with a computable incentive split, for the summary cards.
-  const latestIncentive = [...chartData].reverse().find(d => d.nimFunded != null) || null;
+  // Total supply APY = organic (from interest) + incentive (from Merkl rewards).
+  // Pull Merkl from the latest tracked chartData row since the live endpoint doesn't call Merkl.
+  const latestMerkl = [...chartData].reverse().find(d => d.merklRewards != null);
+  const incentiveApy = latestMerkl && totalSupply
+    ? (latestMerkl.merklRewards * 365) / totalSupply * 100
+    : null;
+  const totalSupplyApy = organicSupplyApy != null && incentiveApy != null
+    ? organicSupplyApy + incentiveApy
+    : organicSupplyApy ?? null;
 
   return (
     <div className="weekly-trends">
       <h2>USDG — Aave v4</h2>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap', marginTop: -8, marginBottom: 24 }}>
         <p style={{ color: '#71767b', margin: 0 }}>
-          USDG borrowing across all Aave v4 spokes on Ethereum mainnet · live data refreshes every 60s
+          USDG on Aave v4 (Ethereum mainnet) · live data refreshes every 60s
         </p>
         <DownloadControl chartData={chartData} />
       </div>
@@ -513,42 +520,19 @@ export default function AaveUsdgTab() {
       {live && (
         <section className="wow-section">
           <div className="comparison-grid">
+            <StatCard label="Total USDG Supplied" value={formatUSD(totalSupply)} sub="supply TVL on Main spoke" color={SUPPLY_COLOR} />
+            <StatCard label="Organic Supply APY" value={organicSupplyApy != null ? organicSupplyApy.toFixed(2) + '%' : '—'}
+              sub="from borrow interest (APY × utilization)" color={APY_GREEN} />
+            <StatCard label="Total Supply APY" value={totalSupplyApy != null ? totalSupplyApy.toFixed(2) + '%' : '—'}
+              sub={incentiveApy != null ? `organic ${organicSupplyApy?.toFixed(2)}% + incentive ${incentiveApy.toFixed(2)}%` : 'organic only (no Merkl data)'}
+              color={NIM_SUB_COLOR} />
             <StatCard label="Total USDG Borrowed" value={formatUSD(totalVariableDebt)} sub="across all spokes" color={AAVE_PURPLE} />
-            <StatCard label="Variable Borrow Rate" value={`${variableBorrowApy?.toFixed(2)}%`} sub="APY" color={APY_GREEN} />
-            <StatCard label="Daily Interest Cost" value={formatUSD(dailyInterestCost)} sub="total debt × annual rate ÷ 365" />
+            <StatCard label="Borrow APY" value={variableBorrowApy != null ? variableBorrowApy.toFixed(2) + '%' : '—'} sub="variable rate" color={INTEREST_COLOR} />
+            <StatCard label="Daily Interest" value={formatUSD(dailyInterestCost)} sub="debt × annual rate ÷ 365" />
           </div>
         </section>
       )}
 
-      {/* Spoke breakdown */}
-      {spokeBreakdown && (
-        <section className="wow-section">
-          <h3>Debt by Spoke (current)</h3>
-          <div className="comparison-grid">
-            {spokeBreakdown.map((spoke, i) => (
-              <StatCard key={spoke.name} label={spoke.name + ' Spoke'} value={formatUSD(spoke.debt)}
-                sub={totalVariableDebt > 0 ? ((spoke.debt / totalVariableDebt) * 100).toFixed(1) + '% of total' : ''}
-                color={SPOKE_COLORS[i % SPOKE_COLORS.length]} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Incentive funding breakdown */}
-      {latestIncentive && (
-        <section className="wow-section">
-          <h3>Incentive Funding (latest: {latestIncentive.displayDate})</h3>
-          <div className="comparison-grid">
-            <StatCard label="Total Merkl Incentives" value={formatUSD(latestIncentive.merklRewards)} sub="distributed per day" color={MERKL_COLOR} />
-            <StatCard label="NIM-funded Portion" value={formatUSD(latestIncentive.nimFunded)}
-              sub={`idle USDG × ${(NIM_APY * 100).toFixed(1)}% ÷ 365`} color={NIM_COLOR} />
-            <StatCard label="Out-of-pocket Spend" value={formatUSD(latestIncentive.outOfPocket)}
-              sub="incentive cost above NIM revenue" color={OOP_COLOR} />
-            <StatCard label="Idle USDG on Aave" value={formatUSD(latestIncentive.idle)}
-              sub="supply TVL − borrowed" color={SUPPLY_COLOR} />
-          </div>
-        </section>
-      )}
 
       {chartData.length > 0 && (
         <>

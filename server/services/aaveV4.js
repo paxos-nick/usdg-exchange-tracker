@@ -136,11 +136,28 @@ async function getUsdgReserveData() {
   const annualRate        = Number(drawnRate) / Number(RAY);
   const dailyInterestCost = totalVariableDebt * annualRate / 365;
 
+  // 3. Supply TVL from Main spoke (only spoke with meaningful USDG supply)
+  let totalSupply = 0;
+  try {
+    const supplyHex = await rpcCall('eth_call', [
+      { to: USDG_SPOKES[0].address, data: SEL_GET_RESERVE_SUPPLIED + hex32(USDG_SPOKES[0].reserveId) }, 'latest'
+    ]);
+    totalSupply = Number(BigInt('0x' + supplyHex.slice(2))) / Math.pow(10, USDG_DECIMALS);
+  } catch { /* ignore */ }
+
+  const utilization  = totalSupply > 0 ? totalVariableDebt / totalSupply : 0;
+  const organicSupplyApy = variableBorrowApy * utilization; // what suppliers earn from interest alone
+  const idleUsdg     = Math.max(totalSupply - totalVariableDebt, 0);
+
   return {
     totalVariableDebt,
     variableBorrowApy,
     dailyInterestCost,
-    spokeBreakdown: spokeDebts
+    spokeBreakdown: spokeDebts,
+    totalSupply,
+    organicSupplyApy,
+    utilization,
+    idleUsdg,
   };
 }
 
