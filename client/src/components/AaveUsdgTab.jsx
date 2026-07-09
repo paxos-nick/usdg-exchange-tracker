@@ -518,19 +518,27 @@ export default function AaveUsdgTab() {
 
       {/* Live metrics */}
       {live && (
-        <section className="wow-section">
-          <div className="comparison-grid">
-            <StatCard label="Total USDG Supplied" value={formatUSD(totalSupply)} sub="supply TVL on Main spoke" color={SUPPLY_COLOR} />
-            <StatCard label="Organic Supply APY" value={organicSupplyApy != null ? organicSupplyApy.toFixed(2) + '%' : '—'}
-              sub="from borrow interest (APY × utilization)" color={APY_GREEN} />
-            <StatCard label="Total Supply APY" value={totalSupplyApy != null ? totalSupplyApy.toFixed(2) + '%' : '—'}
-              sub={incentiveApy != null ? `organic ${organicSupplyApy?.toFixed(2)}% + incentive ${incentiveApy.toFixed(2)}%` : 'organic only (no Merkl data)'}
-              color={NIM_SUB_COLOR} />
-            <StatCard label="Total USDG Borrowed" value={formatUSD(totalVariableDebt)} sub="across all spokes" color={AAVE_PURPLE} />
-            <StatCard label="Borrow APY" value={variableBorrowApy != null ? variableBorrowApy.toFixed(2) + '%' : '—'} sub="variable rate" color={INTEREST_COLOR} />
-            <StatCard label="Daily Interest" value={formatUSD(dailyInterestCost)} sub="debt × annual rate ÷ 365" />
-          </div>
-        </section>
+        <>
+          <section className="wow-section">
+            <h3 style={{ margin: '0 0 10px', fontSize: 13, color: '#71767b', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Supply</h3>
+            <div className="comparison-grid">
+              <StatCard label="Total USDG Supplied" value={formatUSD(totalSupply)} sub="supply TVL on Main spoke" color={SUPPLY_COLOR} />
+              <StatCard label="Organic Supply APY" value={organicSupplyApy != null ? organicSupplyApy.toFixed(2) + '%' : '—'}
+                sub="from borrow interest (APY × utilization)" color={APY_GREEN} />
+              <StatCard label="Total Supply APY" value={totalSupplyApy != null ? totalSupplyApy.toFixed(2) + '%' : '—'}
+                sub={incentiveApy != null ? `organic ${organicSupplyApy?.toFixed(2)}% + incentive ${incentiveApy.toFixed(2)}%` : 'organic only'}
+                color={NIM_SUB_COLOR} />
+            </div>
+          </section>
+          <section className="wow-section">
+            <h3 style={{ margin: '0 0 10px', fontSize: 13, color: '#71767b', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Borrow</h3>
+            <div className="comparison-grid">
+              <StatCard label="Total USDG Borrowed" value={formatUSD(totalVariableDebt)} sub="across all spokes" color={AAVE_PURPLE} />
+              <StatCard label="Borrow APY" value={variableBorrowApy != null ? variableBorrowApy.toFixed(2) + '%' : '—'} sub="variable rate" color={INTEREST_COLOR} />
+              <StatCard label="Daily Interest" value={formatUSD(dailyInterestCost)} sub="debt × annual rate ÷ 365" />
+            </div>
+          </section>
+        </>
       )}
 
 
