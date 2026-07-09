@@ -496,15 +496,16 @@ export default function AaveUsdgTab() {
   const { totalVariableDebt, variableBorrowApy, dailyInterestCost,
           totalSupply, organicSupplyApy, idleUsdg } = live || {};
 
-  // Total supply APY = organic (from interest) + incentive (from Merkl rewards).
-  // Pull Merkl from the latest tracked chartData row since the live endpoint doesn't call Merkl.
+  // Total supply APY = Merkl daily rewards annualised over total supply.
+  // This is the full rate (organic already included), not an add-on.
+  // The incentive boost = total - organic (the incremental program contribution).
   const latestMerkl = [...chartData].reverse().find(d => d.merklRewards != null);
-  const incentiveApy = latestMerkl && totalSupply
+  const totalSupplyApy = latestMerkl && totalSupply
     ? (latestMerkl.merklRewards * 365) / totalSupply * 100
-    : null;
-  const totalSupplyApy = organicSupplyApy != null && incentiveApy != null
-    ? organicSupplyApy + incentiveApy
     : organicSupplyApy ?? null;
+  const incentiveBoost = totalSupplyApy != null && organicSupplyApy != null
+    ? Math.max(totalSupplyApy - organicSupplyApy, 0)
+    : null;
 
   return (
     <div className="weekly-trends">
@@ -526,7 +527,7 @@ export default function AaveUsdgTab() {
               <StatCard label="Organic Supply APY" value={organicSupplyApy != null ? organicSupplyApy.toFixed(2) + '%' : '—'}
                 sub="from borrow interest (APY × utilization)" color={APY_GREEN} />
               <StatCard label="Total Supply APY" value={totalSupplyApy != null ? totalSupplyApy.toFixed(2) + '%' : '—'}
-                sub={incentiveApy != null ? `organic ${organicSupplyApy?.toFixed(2)}% + incentive ${incentiveApy.toFixed(2)}%` : 'organic only'}
+                sub={incentiveBoost != null ? `organic ${organicSupplyApy?.toFixed(2)}% + program boost ${incentiveBoost.toFixed(2)}%` : 'organic only'}
                 color={NIM_SUB_COLOR} />
             </div>
           </section>
