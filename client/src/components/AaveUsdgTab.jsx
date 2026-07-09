@@ -59,6 +59,24 @@ const SURPLUS_COLOR  = '#22c55e'; // demand exceeds subsidy (self-sustaining)
 // This "NIM share" funds part of the Merkl incentives; anything above it is out-of-pocket.
 const NIM_APY = 0.031; // 3.1% APY
 
+// Historical weekly out-of-pocket incentive spend (loaded into Merkl each week).
+// Used as fallback for days the Merkl API cannot look back to. Daily = weekTotal / 7.
+// Merkl API data takes priority where available (Jun 30 onward).
+const HISTORICAL_OOP_WEEKS = [
+  { from: '2026-05-21', to: '2026-05-27', weekTotal: 7614 },
+  { from: '2026-05-28', to: '2026-06-03', weekTotal: 17039 },
+  { from: '2026-06-04', to: '2026-06-10', weekTotal: 15221 },
+  { from: '2026-06-11', to: '2026-06-17', weekTotal: 15221 },
+  { from: '2026-06-18', to: '2026-06-24', weekTotal: 13779 },
+  { from: '2026-06-25', to: '2026-07-01', weekTotal: 12865 },
+  { from: '2026-07-02', to: '2026-07-08', weekTotal: 21709 },
+];
+
+function historicalDailyOop(dateStr) {
+  const w = HISTORICAL_OOP_WEEKS.find(r => dateStr >= r.from && dateStr <= r.to);
+  return w ? w.weekTotal / 7 : null;
+}
+
 const tooltipBase = {
   contentStyle: { backgroundColor: '#1a1f2e', border: '1px solid #2f3542', borderRadius: 8, color: '#e7e9ea' },
   labelStyle: { color: '#71767b' }
@@ -254,7 +272,9 @@ function DivergingTooltip({ active, payload, label }) {
       {tracked ? (
         <>
           <div style={{ marginTop: 8 }}>
-            <TipRow color={DEFICIT_COLOR} label="Out-of-pocket (Merkl − NIM)" value={r.outOfPocket} />
+            <TipRow color={DEFICIT_COLOR}
+              label={r.oopSource === 'historical' ? 'Out-of-pocket (est. weekly ÷ 7)' : 'Out-of-pocket (Merkl − NIM)'}
+              value={r.outOfPocket} />
           </div>
           <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid #2f3542',
             display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 600,
@@ -268,7 +288,7 @@ function DivergingTooltip({ active, payload, label }) {
         </>
       ) : (
         <div style={{ fontSize: 11, color: '#71767b', fontStyle: 'italic', marginTop: 6 }}>
-          Out-of-pocket not tracked before Merkl coverage began.
+          Out-of-pocket not available for this date.
         </div>
       )}
     </div>
@@ -299,9 +319,9 @@ function DivergingBarChart({ chartData }) {
         <div>
           <h3 style={{ margin: 0 }}>Daily incentive position</h3>
           <p style={{ color: '#71767b', fontSize: 12, margin: '2px 0 0', maxWidth: 640 }}>
-            Above $0 → flows to suppliers: borrow interest + NIM share from idle USDG.
-            Below $0 → out-of-pocket incentive spend. Break-even when the positive stack clears $0.
-            {trackingStart && ` Out-of-pocket tracked from ${trackingStart.displayDate}.`}
+            Above $0: borrow interest + NIM share from idle USDG, flowing to suppliers.
+            Below $0: out-of-pocket incentive spend (Merkl API from Jun 30; weekly estimates before that).
+            Break-even when the positive stack reaches $0.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 4, background: '#1a1f2e', borderRadius: 6, padding: 3 }}>
@@ -412,28 +432,31 @@ export default function AaveUsdgTab() {
     // so it extends as far back as the idle-USDG history goes.
     const nimRevenue = idle != null ? idle * NIM_APY / 365 : null;
 
-    let nimFunded = null;   // portion of the day's incentives covered by NIM revenue
-    let outOfPocket = null; // incremental spend on top of NIM revenue
+    let nimFunded = null;
+    let outOfPocket = null; // from Merkl API: Merkl − NIM; from historical: weekly ÷ 7
     if (merklRewards != null && nimRevenue != null) {
       nimFunded   = Math.min(nimRevenue, merklRewards);
       outOfPocket = Math.max(merklRewards - nimRevenue, 0);
     }
 
-    // Diverging bar chart framing:
-    //   above $0: borrow interest (demand) + NIM share — both flow to suppliers
-    //   below $0: out-of-pocket incentives — actual cash cost
-    //   break-even: positive stack = negative bar depth
-    // Out-of-pocket is UNKNOWN before Merkl tracking begins — not zero.
-    const demand     = row.daily_interest;
-    const oopTracked = merklRewards != null;
-    const oopArea    = oopTracked ? outOfPocket : null;
+    const demand = row.daily_interest;
+
+    // Out-of-pocket source priority:
+    //   1. Merkl API (tracked from Jun 30) — already set above as outOfPocket
+    //   2. Historical weekly data (user-provided, May 21–Jul 8) — fallback when Merkl null
+    const histOop  = merklRewards == null ? historicalDailyOop(row.date) : null;
+    const oopSource = merklRewards != null ? 'merkl' : histOop != null ? 'historical' : null;
+    if (histOop != null) outOfPocket = histOop;
+
+    const oopTracked   = outOfPocket != null;
+    const oopArea      = outOfPocket;
     const totalSubsidy = (nimRevenue != null && oopTracked) ? nimRevenue + outOfPocket : null;
-    const oopNeg = oopTracked ? -outOfPocket : null;
-    // Net = demand − out-of-pocket (which is already Merkl − NIM).
-    // NIM is NOT added as a separate positive term — it is already embedded in
-    // the reduced out-of-pocket bar. Adding it twice would inflate the net.
-    // Equivalent to: demand + NIM − Merkl (the true revenue-minus-cost net).
-    const netPosition = oopTracked ? (demand ?? 0) - outOfPocket : null;
+    const oopNeg       = oopTracked ? -outOfPocket : null;
+    // Net = demand + NIM − total Merkl spend = demand − (Merkl − NIM) = demand + NIM − outOfPocket
+    // For historical days outOfPocket is already the OOP amount, so net = demand + NIM − OOP.
+    const netPosition  = oopTracked && nimRevenue != null
+      ? (demand ?? 0) + nimRevenue - outOfPocket
+      : null;
 
     return {
       date: row.date,
@@ -449,6 +472,7 @@ export default function AaveUsdgTab() {
       nimFunded,
       outOfPocket,
       oopNeg,
+      oopSource,
       netPosition,
       demand,
       oopArea,
