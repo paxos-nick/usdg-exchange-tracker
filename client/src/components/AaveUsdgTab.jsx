@@ -352,8 +352,8 @@ function DivergingBarChart({ chartData }) {
             )}
 
             {/* Break-even line — the finish */}
-            <ReferenceLine y={0} stroke="#e7e9ea" strokeWidth={1.5}
-              label={{ value: '← break-even', fill: '#e7e9ea', fontSize: 11, position: 'insideBottomLeft' }} />
+            <ReferenceLine y={0} stroke="#4b5563" strokeWidth={1} strokeDasharray="4 3"
+              label={{ value: 'break-even', fill: '#6b7280', fontSize: 11, position: 'insideBottomLeft' }} />
 
             {/* Positive stack: borrow interest (base) + NIM share (top) */}
             <Bar dataKey="demand"     stackId="pos" fill={DEMAND_COLOR}   fillOpacity={0.85} isAnimationActive={false} />
