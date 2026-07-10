@@ -145,6 +145,16 @@ const SCHEMA_SQL = `
 
   ALTER TABLE aave_usdg_history
     ADD COLUMN IF NOT EXISTS supply_apy NUMERIC(10,6);
+
+  -- Merkl Hub campaign data captured at snapshot time.
+  -- merkl_hub_apr: the Hub campaign's configured APR (%) — e.g. 6.2. Queried live each day.
+  -- merkl_hub_tvl: the TVL Merkl uses for that campaign ($). May differ from total_supply.
+  -- OOP = (merkl_hub_apr - supply_apy) / 100 * merkl_hub_tvl / 365
+  ALTER TABLE aave_usdg_history
+    ADD COLUMN IF NOT EXISTS merkl_hub_apr NUMERIC(10,4);
+
+  ALTER TABLE aave_usdg_history
+    ADD COLUMN IF NOT EXISTS merkl_hub_tvl NUMERIC(24,6);
 `;
 
 async function setupDatabase() {

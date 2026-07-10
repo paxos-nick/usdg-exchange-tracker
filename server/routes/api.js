@@ -533,7 +533,9 @@ router.get('/aave/usdg/history', async (req, res) => {
               daily_interest::float, spoke_breakdown,
               merkl_daily_rewards::float AS merkl_daily_rewards,
               total_supply::float AS total_supply,
-              supply_apy::float AS supply_apy
+              supply_apy::float AS supply_apy,
+              merkl_hub_apr::float AS merkl_hub_apr,
+              merkl_hub_tvl::float AS merkl_hub_tvl
        FROM aave_usdg_history
        ORDER BY snapshot_date ASC`
     );

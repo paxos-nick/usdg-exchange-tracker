@@ -478,17 +478,22 @@ export default function AaveUsdgTab() {
     const demand   = row.daily_interest;
     const supplyApy = row.supply_apy != null ? parseFloat(row.supply_apy) : null;
 
-    // OOP = what Paxos spends to close the gap between organic supply rate and the 6.2% target.
+    // OOP = what Paxos spends to close the gap between organic supply rate and the target APR.
     //
     // For the current campaign (Jul 7+):
-    //   OOP = max(0, MERKL_TARGET_APR/100 − organicRate/100) × hub_tvl_proxy / 365
-    //   where hub_tvl ≈ total_debt (matched within ~2% from Merkl API data)
-    //   and organicRate = supply_apy = borrow_apy × utilization (stored per-day on-chain)
+    //   OOP = max(0, targetApr/100 − organicRate/100) × hubTvl / 365
+    //   targetApr: Merkl Hub campaign's configured APR, queried at snapshot time.
+    //              Falls back to MERKL_TARGET_APR (6.2%) for days before we stored it.
+    //   hubTvl:    Merkl Hub eligible TVL at snapshot time.
+    //              Falls back to total_debt as proxy (tracks within ~2%).
+    //   organicRate: supply_apy = borrow_apy × utilization, captured at snapshot time.
     //
     // For pre-campaign history (May 21 – Jul 6):
-    //   Use user-provided weekly campaign budget ÷ 7 (more accurate for that period)
-    const oopFromRate = supplyApy != null && totalDebt != null && row.date >= CAMPAIGN_START
-      ? Math.max(MERKL_TARGET_APR / 100 - supplyApy / 100, 0) * totalDebt / 365
+    //   Use user-provided weekly campaign budget ÷ 7 (authoritative for that period).
+    const targetApr = row.merkl_hub_apr ?? MERKL_TARGET_APR;          // actual queried rate or fallback
+    const hubTvl    = row.merkl_hub_tvl ?? totalDebt;                  // actual Merkl TVL or proxy
+    const oopFromRate = supplyApy != null && hubTvl != null && row.date >= CAMPAIGN_START
+      ? Math.max(targetApr / 100 - supplyApy / 100, 0) * hubTvl / 365
       : null;
     const histOop = row.date < CAMPAIGN_START ? historicalDailyOop(row.date) : null;
     const outOfPocket = oopFromRate ?? histOop ?? null;

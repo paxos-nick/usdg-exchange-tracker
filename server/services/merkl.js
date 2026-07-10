@@ -30,8 +30,14 @@ async function getUsdgDailyRewards() {
     return sum + (opp.dailyRewards || 0);
   }, 0);
 
+  // The Hub Supply campaign is the primary Paxos-funded campaign.
+  // Its APR is the configured target rate; TVL is what Merkl uses for OOP calculation.
+  const hubCampaign = liveUsdgSupply.find(opp => opp.type === 'AAVE_V4_HUB_SUPPLY');
+
   return {
     totalDailyRewards,
+    hubApr: hubCampaign?.apr ?? null,   // configured target APR (e.g. 6.2) — changes when campaign updates
+    hubTvl: hubCampaign?.tvl ?? null,   // Merkl-tracked eligible TVL at time of query
     breakdown: liveUsdgSupply.map(opp => ({
       name: opp.name,
       type: opp.type,
