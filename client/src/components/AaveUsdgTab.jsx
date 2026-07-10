@@ -177,7 +177,7 @@ function SupplyChart({ chartData }) {
                 label={{ value: 'Supplied', angle: -90, position: 'insideLeft', fill: SUPPLY_COLOR, fontSize: 11, dx: -8 }} />
               <YAxis yAxisId="apy" orientation="right"
                 stroke="#71767b" tick={{ fill: '#71767b', fontSize: 11 }}
-                tickFormatter={v => v.toFixed(1) + '%'} width={60}
+                tickFormatter={v => v != null ? v.toFixed(1) + '%' : ''} width={60}
                 label={{ value: 'APY', angle: 90, position: 'insideRight', fill: '#71767b', fontSize: 11, dx: 10 }} />
               <Tooltip
                 contentStyle={{ backgroundColor: '#1a1f2e', border: '1px solid #2f3542', borderRadius: 8, color: '#e7e9ea' }}
@@ -213,7 +213,7 @@ function SupplyChart({ chartData }) {
               {hasIncentiveApy && (
                 <Area yAxisId="apy" type="monotone" dataKey="totalSupplyApyChart"
                   stroke="none" fill="url(#incentiveApyGrad)" dot={false}
-                  baseValue="dataMin" isAnimationActive={false} name="incentiveBoostApy"
+                  baseValue={0} isAnimationActive={false} name="incentiveBoostApy"
                   legendType="none" tooltipType="none" />
               )}
 
@@ -497,8 +497,13 @@ export default function AaveUsdgTab() {
     // For Merkl-tracked days: merklRewards is total; for historical: reconstruct as OOP + NIM.
     const totalDailyMerkl = merklRewards ??
       (outOfPocket != null && nimRevenue != null ? outOfPocket + nimRevenue : null);
-    const totalSupplyApyChart = totalDailyMerkl != null && totalSupply
+    // Cap at 50% — early dates had tiny TVL so the calculated APY is nonsensically large.
+    // Those data points are visually meaningless and break the Y-axis scale.
+    const rawTotalSupplyApy = totalDailyMerkl != null && totalSupply
       ? totalDailyMerkl * 365 / totalSupply * 100
+      : null;
+    const totalSupplyApyChart = rawTotalSupplyApy != null && rawTotalSupplyApy <= 50
+      ? rawTotalSupplyApy
       : null;
     const incentiveBoostApy = totalSupplyApyChart != null && supplyApy != null
       ? Math.max(totalSupplyApyChart - supplyApy, 0)
