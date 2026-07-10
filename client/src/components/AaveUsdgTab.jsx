@@ -143,7 +143,7 @@ function SupplyChart({ chartData }) {
         <div>
           <h3 style={{ margin: 0 }}>Supply TVL & Supply Rates</h3>
           <p style={{ color: '#71767b', fontSize: 12, margin: '2px 0 0' }}>
-            Total USDG supplied (left) · organic APY from interest, incentive boost, and total supply APY (right)
+            Total USDG supplied (left) · base rate from borrow interest, incentive boost, and total supply APY (right)
           </p>
         </div>
         <div style={{ display: 'flex', gap: 4, background: '#1a1f2e', borderRadius: 6, padding: 3 }}>
@@ -191,7 +191,7 @@ function SupplyChart({ chartData }) {
                 formatter={(v, name) => {
                   if (v == null) return ['—', name];
                   if (name === 'totalSupply')         return [formatUSD(v), 'Supply TVL'];
-                  if (name === 'supplyApy')           return [v.toFixed(3) + '%', 'Organic APY'];
+                  if (name === 'supplyApy')           return [v.toFixed(3) + '%', 'Base rate (borrow interest)'];
                   if (name === 'incentiveBoostApy')   return [v.toFixed(3) + '%', 'Incentive boost'];
                   if (name === 'totalSupplyApyChart') return [v.toFixed(3) + '%', 'Total supply APY'];
                   return [v, name];
@@ -200,7 +200,7 @@ function SupplyChart({ chartData }) {
               <Legend wrapperStyle={{ color: '#e7e9ea' }}
                 formatter={v => ({
                   totalSupply: 'Supply TVL',
-                  supplyApy: 'Organic APY',
+                  supplyApy: 'Base rate (borrow interest)',
                   incentiveBoostApy: 'Incentive boost',
                   totalSupplyApyChart: 'Total supply APY',
                 }[v] ?? v)} />
@@ -210,7 +210,7 @@ function SupplyChart({ chartData }) {
                 stroke={SUPPLY_COLOR} strokeWidth={2} fill="url(#supplyGrad)"
                 dot={false} activeDot={{ r: 4, fill: SUPPLY_COLOR, strokeWidth: 0 }} name="totalSupply" />
 
-              {/* Organic APY — thin dashed baseline */}
+              {/* Base rate (borrow interest) — thin dashed baseline */}
               <Line yAxisId="apy" type="monotone" dataKey="supplyApy"
                 stroke={APY_GREEN} strokeWidth={1.5} strokeDasharray="4 3" dot={false}
                 activeDot={{ r: 3, fill: APY_GREEN, strokeWidth: 0 }} name="supplyApy" />
@@ -314,7 +314,7 @@ function DivergingTooltip({ active, payload, label }) {
         <>
           <div style={{ marginTop: 8 }}>
             <TipRow color={DEFICIT_COLOR}
-              label={r.oopSource === 'rate' ? `Out-of-pocket (${MERKL_TARGET_APR}% target − organic)` : r.oopSource === 'historical' ? 'Out-of-pocket (weekly budget ÷ 7)' : 'Out-of-pocket'}
+              label={r.oopSource === 'rate' ? `Out-of-pocket (${MERKL_TARGET_APR}% target − base rate)` : r.oopSource === 'historical' ? 'Out-of-pocket (weekly budget ÷ 7)' : 'Out-of-pocket'}
               value={r.outOfPocket} />
           </div>
           <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid #2f3542',
@@ -361,7 +361,7 @@ function DivergingBarChart({ chartData }) {
           <h3 style={{ margin: 0 }}>Daily incentive position</h3>
           <p style={{ color: '#71767b', fontSize: 12, margin: '2px 0 0', maxWidth: 640 }}>
             Above $0: borrow interest + NIM share from idle USDG, flowing to suppliers.
-            Below $0: Paxos OOP spend = gap between {MERKL_TARGET_APR}% target and organic supply rate, times hub TVL.
+            Below $0: Paxos OOP spend = gap between {MERKL_TARGET_APR}% target and base supply rate, times hub TVL.
             Pre-{CAMPAIGN_START}: weekly campaign budget. Break-even when the positive stack reaches $0.
           </p>
         </div>
@@ -478,7 +478,7 @@ export default function AaveUsdgTab() {
     const demand   = row.daily_interest;
     const supplyApy = row.supply_apy != null ? parseFloat(row.supply_apy) : null;
 
-    // OOP = what Paxos spends to close the gap between organic supply rate and the target APR.
+    // OOP = what Paxos spends to close the gap between base supply rate and the target APR.
     //
     // For the current campaign (Jul 7+):
     //   OOP = max(0, targetApr/100 − organicRate/100) × hubTvl / 365
@@ -594,10 +594,10 @@ export default function AaveUsdgTab() {
             <h3 style={{ margin: '0 0 10px', fontSize: 13, color: '#71767b', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Supply</h3>
             <div className="comparison-grid">
               <StatCard label="Total USDG Supplied" value={formatUSD(totalSupply)} sub="supply TVL on Main spoke" color={SUPPLY_COLOR} />
-              <StatCard label="Organic Supply APY" value={organicSupplyApy != null ? organicSupplyApy.toFixed(2) + '%' : '—'}
+              <StatCard label="Base Supply Rate" value={organicSupplyApy != null ? organicSupplyApy.toFixed(2) + '%' : '—'}
                 sub="from borrow interest (APY × utilization)" color={APY_GREEN} />
               <StatCard label="Total Supply APY" value={totalSupplyApy != null ? totalSupplyApy.toFixed(2) + '%' : '—'}
-                sub={incentiveBoost != null ? `organic ${organicSupplyApy?.toFixed(2)}% + program boost ${incentiveBoost.toFixed(2)}%` : 'organic only'}
+                sub={incentiveBoost != null ? `base ${organicSupplyApy?.toFixed(2)}% + program boost ${incentiveBoost.toFixed(2)}%` : 'base rate only'}
                 color={NIM_SUB_COLOR} />
             </div>
           </section>
@@ -615,7 +615,7 @@ export default function AaveUsdgTab() {
 
       {chartData.length > 0 && (
         <>
-          {/* Chart 1: Supply TVL + organic supply rate */}
+          {/* Chart 1: Supply TVL + base supply rate */}
           <SupplyChart chartData={chartData} />
 
           {/* Chart 2: Borrowed + APY on dual axes */}
