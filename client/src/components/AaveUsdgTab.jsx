@@ -55,8 +55,14 @@ const DEFICIT_COLOR  = '#ef4444'; // subsidy exceeds demand (bootstrapping)
 const SURPLUS_COLOR  = '#22c55e'; // demand exceeds subsidy (self-sustaining)
 
 // Revenue-share rate earned on idle USDG sitting on Aave (supply TVL − borrow TVL).
-// This "NIM share" funds part of the Merkl incentives; anything above it is out-of-pocket.
 const NIM_APY = 0.031; // 3.1% APY
+
+// Paxos-configured total supply APY target delivered via the Merkl Hub campaign.
+// OOP = whatever is needed above the organic rate to hit this target.
+const MERKL_TARGET_APR = 6.2;   // percent
+
+// The current 6.2% campaign started July 7 2026. Before that, use weekly budget data.
+const CAMPAIGN_START = '2026-07-07';
 
 // Historical weekly out-of-pocket incentive spend (loaded into Merkl each week).
 // Used as fallback for days the Merkl API cannot look back to. Daily = weekTotal / 7.
@@ -308,7 +314,7 @@ function DivergingTooltip({ active, payload, label }) {
         <>
           <div style={{ marginTop: 8 }}>
             <TipRow color={DEFICIT_COLOR}
-              label={r.oopSource === 'historical' ? 'Out-of-pocket (est. weekly ÷ 7)' : 'Out-of-pocket (Merkl − NIM)'}
+              label={r.oopSource === 'rate' ? `Out-of-pocket (${MERKL_TARGET_APR}% target − organic)` : r.oopSource === 'historical' ? 'Out-of-pocket (weekly budget ÷ 7)' : 'Out-of-pocket'}
               value={r.outOfPocket} />
           </div>
           <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid #2f3542',
@@ -355,8 +361,8 @@ function DivergingBarChart({ chartData }) {
           <h3 style={{ margin: 0 }}>Daily incentive position</h3>
           <p style={{ color: '#71767b', fontSize: 12, margin: '2px 0 0', maxWidth: 640 }}>
             Above $0: borrow interest + NIM share from idle USDG, flowing to suppliers.
-            Below $0: out-of-pocket incentive spend (Merkl API from Jun 30; weekly estimates before that).
-            Break-even when the positive stack reaches $0.
+            Below $0: Paxos OOP spend = gap between {MERKL_TARGET_APR}% target and organic supply rate, times hub TVL.
+            Pre-{CAMPAIGN_START}: weekly campaign budget. Break-even when the positive stack reaches $0.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 4, background: '#1a1f2e', borderRadius: 6, padding: 3 }}>
@@ -467,21 +473,26 @@ export default function AaveUsdgTab() {
     // so it extends as far back as the idle-USDG history goes.
     const nimRevenue = idle != null ? idle * NIM_APY / 365 : null;
 
-    let nimFunded = null;
-    let outOfPocket = null; // from Merkl API: Merkl − NIM; from historical: weekly ÷ 7
-    if (merklRewards != null && nimRevenue != null) {
-      nimFunded   = Math.min(nimRevenue, merklRewards);
-      outOfPocket = Math.max(merklRewards - nimRevenue, 0);
-    }
+    const nimFunded = null; // kept for CSV compat; no longer meaningful with rate-based OOP
 
-    const demand = row.daily_interest;
+    const demand   = row.daily_interest;
+    const supplyApy = row.supply_apy != null ? parseFloat(row.supply_apy) : null;
 
-    // Out-of-pocket source priority:
-    //   1. Merkl API (tracked from Jun 30) — already set above as outOfPocket
-    //   2. Historical weekly data (user-provided, May 21–Jul 8) — fallback when Merkl null
-    const histOop  = merklRewards == null ? historicalDailyOop(row.date) : null;
-    const oopSource = merklRewards != null ? 'merkl' : histOop != null ? 'historical' : null;
-    if (histOop != null) outOfPocket = histOop;
+    // OOP = what Paxos spends to close the gap between organic supply rate and the 6.2% target.
+    //
+    // For the current campaign (Jul 7+):
+    //   OOP = max(0, MERKL_TARGET_APR/100 − organicRate/100) × hub_tvl_proxy / 365
+    //   where hub_tvl ≈ total_debt (matched within ~2% from Merkl API data)
+    //   and organicRate = supply_apy = borrow_apy × utilization (stored per-day on-chain)
+    //
+    // For pre-campaign history (May 21 – Jul 6):
+    //   Use user-provided weekly campaign budget ÷ 7 (more accurate for that period)
+    const oopFromRate = supplyApy != null && totalDebt != null && row.date >= CAMPAIGN_START
+      ? Math.max(MERKL_TARGET_APR / 100 - supplyApy / 100, 0) * totalDebt / 365
+      : null;
+    const histOop = row.date < CAMPAIGN_START ? historicalDailyOop(row.date) : null;
+    const outOfPocket = oopFromRate ?? histOop ?? null;
+    const oopSource   = oopFromRate != null ? 'rate' : histOop != null ? 'historical' : null;
 
     const oopTracked   = outOfPocket != null;
     const oopArea      = outOfPocket;
