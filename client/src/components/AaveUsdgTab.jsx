@@ -300,15 +300,17 @@ function DivergingTooltip({ active, payload, label }) {
   const r = payload[0].payload;
   const tracked = r.oopNeg != null;
   const posTotal = (r.demand ?? 0) + (r.nimRevenue ?? 0);
-  const net = tracked ? (r.demand ?? 0) - r.outOfPocket : null;
-  const coverage = tracked && r.merklRewards ? (posTotal / r.merklRewards) * 100 : null;
+  // Coverage uses after-fee demand — that's the economically correct natural offset
+  const naturalAfterFee = (r.demandNetOfFee ?? 0) + (r.nimRevenue ?? 0);
+  const net = tracked ? naturalAfterFee - r.outOfPocket : null;
+  const coverage = tracked && r.outOfPocket ? (naturalAfterFee / r.outOfPocket) * 100 : null;
   const positive = net != null && net >= 0;
 
   return (
     <div style={{ ...tooltipBase.contentStyle, padding: '10px 14px', minWidth: 240 }}>
       <div style={{ color: '#71767b', marginBottom: 8, fontSize: 12 }}>{label}</div>
 
-      <TipRow color={DEMAND_COLOR} label={`Borrow interest (×${(1-AAVE_RESERVE_FACTOR).toFixed(2)} after Aave fee)`} value={r.demandNetOfFee} />
+      <TipRow color={DEMAND_COLOR} label="Borrow interest" value={r.demand} />
       <TipRow color={NIM_SUB_COLOR} label={`NIM share (idle × ${(NIM_APY * 100).toFixed(1)}%)`} value={r.nimRevenue} />
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 600,
         color: '#e7e9ea', paddingTop: 4, marginTop: 4, borderTop: '1px solid #2f3542' }}>
@@ -366,8 +368,9 @@ function DivergingBarChart({ chartData }) {
         <div>
           <h3 style={{ margin: 0 }}>Daily incentive position</h3>
           <p style={{ color: '#71767b', fontSize: 12, margin: '2px 0 0', maxWidth: 640 }}>
-            Above $0: borrow interest (after Aave's ~{(AAVE_RESERVE_FACTOR * 100).toFixed(0)}% fee) + NIM share from idle USDG.
-            Below $0: out-of-pocket incentive spend. Net line = market health: positive when natural flows cover OOP.
+            Above $0: borrow interest (what borrowers pay) + NIM share from idle USDG.
+            Below $0: out-of-pocket = total Merkl incentive minus natural flows (using borrow interest after Aave's ~{(AAVE_RESERVE_FACTOR * 100).toFixed(0)}% fee).
+            Net line: positive when natural flows cover OOP.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 4, background: '#1a1f2e', borderRadius: 6, padding: 3 }}>
@@ -382,22 +385,24 @@ function DivergingBarChart({ chartData }) {
         </div>
       </div>
 
-      {net != null && (
+      {latest?.outOfPocket != null && (
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', margin: '12px 0 8px' }}>
           <span style={{ fontSize: 24, fontWeight: 700, color: statusColor }}>
-            {net < 0 ? '−' : '+'}{formatUSD(Math.abs(net))}/day
+            {formatUSD(latest.outOfPocket)}/day
           </span>
           <span style={{ color: '#c4c8cc', fontSize: 13 }}>
-            net · {formatUSD(positiveTotal)}/day natural vs {formatUSD(latest.outOfPocket)}/day OOP
+            out-of-pocket on {latest.displayDate}
           </span>
           {coverage != null && (
-            <span style={{ color: '#71767b', fontSize: 12 }}>· {coverage.toFixed(0)}% covered · goal: 100%</span>
+            <span style={{ color: '#71767b', fontSize: 12 }}>
+              · natural flows cover {coverage.toFixed(0)}% · goal: 100%
+            </span>
           )}
         </div>
       )}
 
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', margin: '4px 0 10px', fontSize: 12, color: '#a9b1ba' }}>
-        <LegendChip color={DEMAND_COLOR} label={`Borrow interest (after ~${(AAVE_RESERVE_FACTOR*100).toFixed(0)}% Aave fee)`} />
+        <LegendChip color={DEMAND_COLOR} label="Borrow interest" />
         <LegendChip color={NIM_SUB_COLOR} label={`NIM share (idle USDG × ${(NIM_APY * 100).toFixed(1)}%)`} />
         <LegendChip color={DEFICIT_COLOR} label="Out-of-pocket (Merkl − NIM)" />
         <LegendChip color="#e7e9ea" line label="Net position" />
@@ -422,7 +427,7 @@ function DivergingBarChart({ chartData }) {
               label={{ value: 'break-even', fill: '#6b7280', fontSize: 11, position: 'insideBottomLeft' }} />
 
             {/* Positive stack: borrow interest (base) + NIM share (top) */}
-            <Bar dataKey="demandNetOfFee" stackId="pos" fill={DEMAND_COLOR} fillOpacity={0.85} isAnimationActive={false} />
+            <Bar dataKey="demand" stackId="pos" fill={DEMAND_COLOR} fillOpacity={0.85} isAnimationActive={false} />
             <Bar dataKey="nimRevenue" stackId="pos" fill={NIM_SUB_COLOR} fillOpacity={0.65} radius={[3, 3, 0, 0]} isAnimationActive={false} />
 
             {/* Negative bar: out-of-pocket spend */}
