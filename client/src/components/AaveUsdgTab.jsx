@@ -319,9 +319,12 @@ function DivergingTooltip({ active, payload, label }) {
       {tracked ? (
         <>
           <div style={{ marginTop: 8 }}>
+            <div style={{ marginBottom: 4 }}>
             <TipRow color={DEFICIT_COLOR}
-              label={r.oopSource === 'rate' ? `Out-of-pocket (${MERKL_TARGET_APR}% target − base rate)` : r.oopSource === 'historical' ? 'Out-of-pocket (weekly budget ÷ 7)' : 'Out-of-pocket'}
-              value={r.outOfPocket} />
+              label={r.oopSource === 'merkl' ? 'Total incentive payout (all campaigns)' : 'Incentive payout (est. weekly ÷ 7)'}
+              value={r.totalIncentive} />
+          </div>
+          <TipRow color="#8b95a1" label="Net OOP (above natural flows)" value={r.outOfPocket} dim />
           </div>
           <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid #2f3542',
             display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 600,
@@ -356,10 +359,8 @@ function DivergingBarChart({ chartData }) {
   const positiveTotal = latest
     ? (latest.demandNetOfFee ?? 0) + (latest.nimRevenue ?? 0)
     : null;
-  const net = latest && latest.outOfPocket != null
-    ? (latest.demandNetOfFee ?? 0) + (latest.nimRevenue ?? 0) - latest.outOfPocket
-    : null;
-  const coverage = latest?.outOfPocket ? (positiveTotal / latest.outOfPocket) * 100 : null;
+  const net = latest?.netPosition ?? null;
+  const coverage = latest?.totalIncentive ? (positiveTotal / latest.totalIncentive) * 100 : null;
   const positive = net != null && net >= 0;
   const statusColor = positive ? SURPLUS_COLOR : DEFICIT_COLOR;
 
@@ -391,7 +392,7 @@ function DivergingBarChart({ chartData }) {
             {net < 0 ? '−' : '+'}{formatUSD(Math.abs(net))}/day
           </span>
           <span style={{ color: '#c4c8cc', fontSize: 13 }}>
-            net · {formatUSD(positiveTotal)}/day in (interest + NIM) vs {formatUSD(latest.outOfPocket)}/day OOP
+            net · {formatUSD(positiveTotal)}/day natural vs {formatUSD(latest.totalIncentive)}/day total incentive payout
           </span>
           {coverage != null && (
             <span style={{ color: '#71767b', fontSize: 12 }}>· {coverage.toFixed(0)}% covered · goal: 100%</span>
@@ -435,6 +436,60 @@ function DivergingBarChart({ chartData }) {
             <Line dataKey="netPosition" type="monotone" stroke="#e7e9ea" strokeWidth={2.5}
               dot={{ r: 3.5, fill: '#e7e9ea', strokeWidth: 0 }} isAnimationActive={false}
               connectNulls={false} activeDot={{ r: 5, fill: '#e7e9ea', strokeWidth: 0 }} />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+    </section>
+  );
+}
+
+function BorrowChart({ chartData }) {
+  const [lookback, setLookback] = useState(30);
+  const filtered = lookback === null ? chartData : chartData.slice(-lookback);
+
+  return (
+    <section className="chart-section">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+        <h3 style={{ margin: 0 }}>Total Borrowed & Variable Borrow Rate</h3>
+        <div style={{ display: 'flex', gap: 4, background: '#1a1f2e', borderRadius: 6, padding: 3 }}>
+          {LOOKBACKS.map(({ label, days }) => (
+            <button key={label} onClick={() => setLookback(days)}
+              style={{ padding: '3px 10px', borderRadius: 4, fontSize: 12, cursor: 'pointer', border: 'none',
+                background: lookback === days ? '#2f3542' : 'transparent',
+                color: lookback === days ? '#e7e9ea' : '#71767b' }}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="chart-container">
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={filtered} margin={{ top: 10, right: 60, left: 20, bottom: 5 }}>
+            <defs>
+              <linearGradient id="debtGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%"  stopColor={AAVE_PURPLE} stopOpacity={0.2} />
+                <stop offset="95%" stopColor={AAVE_PURPLE} stopOpacity={0.02} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#2f3542" />
+            <XAxis dataKey="displayDate" stroke="#71767b" tick={{ fill: '#71767b', fontSize: 11 }} tickMargin={10} interval="preserveStartEnd" />
+            <YAxis yAxisId="debt" orientation="left"
+              stroke={AAVE_PURPLE} tick={{ fill: AAVE_PURPLE, fontSize: 11 }}
+              tickFormatter={formatUSDShort} width={75}
+              label={{ value: 'Borrowed', angle: -90, position: 'insideLeft', fill: AAVE_PURPLE, fontSize: 11, dx: -8 }} />
+            <YAxis yAxisId="apy" orientation="right"
+              stroke={APY_GREEN} tick={{ fill: APY_GREEN, fontSize: 11 }}
+              tickFormatter={v => v.toFixed(1) + '%'} width={55}
+              label={{ value: 'APY', angle: 90, position: 'insideRight', fill: APY_GREEN, fontSize: 11, dx: 8 }} />
+            <Tooltip content={<CombinedTooltip />} />
+            <Legend wrapperStyle={{ color: '#e7e9ea' }}
+              formatter={v => v === 'totalDebt' ? 'Total Borrowed' : 'Borrow APY'} />
+            <Area yAxisId="debt" type="monotone" dataKey="totalDebt"
+              stroke={AAVE_PURPLE} strokeWidth={2} fill="url(#debtGrad)"
+              dot={false} activeDot={{ r: 4, fill: AAVE_PURPLE, strokeWidth: 0 }} name="totalDebt" />
+            <Line yAxisId="apy" type="monotone" dataKey="borrowApy"
+              stroke={APY_GREEN} strokeWidth={2} dot={false}
+              activeDot={{ r: 4, fill: APY_GREEN, strokeWidth: 0 }} name="borrowApy" />
           </ComposedChart>
         </ResponsiveContainer>
       </div>
@@ -489,36 +544,28 @@ export default function AaveUsdgTab() {
     const demandNetOfFee = demand != null ? demand * (1 - AAVE_RESERVE_FACTOR) : null;
     const supplyApy = row.supply_apy != null ? parseFloat(row.supply_apy) : null;
 
-    // OOP = what Paxos spends to close the gap between base supply rate and the target APR.
-    //
-    // For the current campaign (Jul 7+):
-    //   OOP = max(0, targetApr/100 − organicRate/100) × hubTvl / 365
-    //   targetApr: Merkl Hub campaign's configured APR, queried at snapshot time.
-    //              Falls back to MERKL_TARGET_APR (6.2%) for days before we stored it.
-    //   hubTvl:    Merkl Hub eligible TVL at snapshot time.
-    //              Falls back to total_debt as proxy (tracks within ~2%).
-    //   organicRate: supply_apy = borrow_apy × utilization, captured at snapshot time.
-    //
-    // For pre-campaign history (May 21 – Jul 6):
-    //   Use user-provided weekly campaign budget ÷ 7 (authoritative for that period).
-    const targetApr = row.merkl_hub_apr ?? MERKL_TARGET_APR;          // actual queried rate or fallback
-    const hubTvl    = row.merkl_hub_tvl ?? totalDebt;                  // actual Merkl TVL or proxy
-    const oopFromRate = supplyApy != null && hubTvl != null && row.date >= CAMPAIGN_START
-      ? Math.max(targetApr / 100 - supplyApy / 100, 0) * hubTvl / 365
-      : null;
-    const histOop = row.date < CAMPAIGN_START ? historicalDailyOop(row.date) : null;
-    const outOfPocket = oopFromRate ?? histOop ?? null;
-    const oopSource   = oopFromRate != null ? 'rate' : histOop != null ? 'historical' : null;
+    // Total daily incentive payout = all Merkl campaigns combined.
+    // For Merkl-tracked days: use merkl_daily_rewards directly (forward-filled).
+    // For pre-Merkl history:  use weekly budget data (Paxos-only; an undercount).
+    const histOop = merklRewards == null ? historicalDailyOop(row.date) : null;
+    const totalIncentive = merklRewards ?? histOop ?? null;
+    const oopSource = merklRewards != null ? 'merkl' : histOop != null ? 'historical' : null;
 
-    const oopTracked   = outOfPocket != null;
+    // OOP (net) = what the program spends ABOVE what the market generates naturally.
+    // = total incentive payout − (borrow interest×0.75 + NIM)
+    // Verified against observed supply rates: merkl_daily_rewards / supply_tvl × 365
+    //   gives the actual total supply APY, back-calculating OOP matches user's spreadsheet.
+    const outOfPocket = totalIncentive != null && demandNetOfFee != null && nimRevenue != null
+      ? Math.max(totalIncentive - demandNetOfFee - nimRevenue, 0)
+      : null;
+
+    const oopTracked   = totalIncentive != null;
     const oopArea      = outOfPocket;
-    const totalSubsidy = (nimRevenue != null && oopTracked) ? nimRevenue + outOfPocket : null;
-    const oopNeg       = oopTracked ? -outOfPocket : null;
-    // Net program health = what the market generates naturally minus what the program injects.
-    // Demand term uses 75% of gross borrow interest — Aave takes ~25% before it reaches suppliers.
-    // Positive = market is self-sustaining; negative = still bootstrapping.
-    const netPosition  = oopTracked && nimRevenue != null && demandNetOfFee != null
-      ? demandNetOfFee + nimRevenue - outOfPocket
+    const totalSubsidy = (nimRevenue != null && outOfPocket != null) ? nimRevenue + outOfPocket : null;
+    const oopNeg       = totalIncentive != null ? -totalIncentive : null;
+    // Net = natural flows − total incentive payout. Positive = self-sustaining.
+    const netPosition  = totalIncentive != null && demandNetOfFee != null && nimRevenue != null
+      ? demandNetOfFee + nimRevenue - totalIncentive
       : null;
 
     // Per-day total supply APY = total Merkl spend (OOP + NIM) annualised over supply TVL.
@@ -549,6 +596,7 @@ export default function AaveUsdgTab() {
       idle,
       nimRevenue,
       nimFunded,
+      totalIncentive,
       outOfPocket,
       oopNeg,
       oopSource,
@@ -632,40 +680,7 @@ export default function AaveUsdgTab() {
           <SupplyChart chartData={chartData} />
 
           {/* Chart 2: Borrowed + APY on dual axes */}
-          <section className="chart-section">
-            <h3>Total Borrowed & Variable Borrow Rate</h3>
-            <div className="chart-container">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={chartData} margin={{ top: 10, right: 60, left: 20, bottom: 5 }}>
-                  <defs>
-                    <linearGradient id="debtGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor={AAVE_PURPLE} stopOpacity={0.2} />
-                      <stop offset="95%" stopColor={AAVE_PURPLE} stopOpacity={0.02} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2f3542" />
-                  <XAxis dataKey="displayDate" stroke="#71767b" tick={{ fill: '#71767b', fontSize: 11 }} tickMargin={10} interval="preserveStartEnd" />
-                  <YAxis yAxisId="debt" orientation="left"
-                    stroke={AAVE_PURPLE} tick={{ fill: AAVE_PURPLE, fontSize: 11 }}
-                    tickFormatter={formatUSDShort} width={75}
-                    label={{ value: 'Borrowed', angle: -90, position: 'insideLeft', fill: AAVE_PURPLE, fontSize: 11, dx: -8 }} />
-                  <YAxis yAxisId="apy" orientation="right"
-                    stroke={APY_GREEN} tick={{ fill: APY_GREEN, fontSize: 11 }}
-                    tickFormatter={v => v.toFixed(1) + '%'} width={55}
-                    label={{ value: 'APY', angle: 90, position: 'insideRight', fill: APY_GREEN, fontSize: 11, dx: 8 }} />
-                  <Tooltip content={<CombinedTooltip />} />
-                  <Legend wrapperStyle={{ color: '#e7e9ea' }}
-                    formatter={v => v === 'totalDebt' ? 'Total Borrowed' : 'Borrow APY'} />
-                  <Area yAxisId="debt" type="monotone" dataKey="totalDebt"
-                    stroke={AAVE_PURPLE} strokeWidth={2} fill="url(#debtGrad)"
-                    dot={false} activeDot={{ r: 4, fill: AAVE_PURPLE, strokeWidth: 0 }} name="totalDebt" />
-                  <Line yAxisId="apy" type="monotone" dataKey="borrowApy"
-                    stroke={APY_GREEN} strokeWidth={2} dot={false}
-                    activeDot={{ r: 4, fill: APY_GREEN, strokeWidth: 0 }} name="borrowApy" />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
-          </section>
+          <BorrowChart chartData={chartData} />
 
           {/* Chart 3: Daily incentive position — diverging bar */}
           <DivergingBarChart chartData={chartData} />
