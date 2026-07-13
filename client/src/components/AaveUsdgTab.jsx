@@ -309,7 +309,6 @@ function DivergingTooltip({ active, payload, label }) {
       <div style={{ color: '#71767b', marginBottom: 8, fontSize: 12 }}>{label}</div>
 
       <TipRow color={DEMAND_COLOR} label={`Borrow interest (×${(1-AAVE_RESERVE_FACTOR).toFixed(2)} after Aave fee)`} value={r.demandNetOfFee} />
-      <TipRow color="#71767b" label="Gross interest" value={r.demand} dim />
       <TipRow color={NIM_SUB_COLOR} label={`NIM share (idle × ${(NIM_APY * 100).toFixed(1)}%)`} value={r.nimRevenue} />
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 600,
         color: '#e7e9ea', paddingTop: 4, marginTop: 4, borderTop: '1px solid #2f3542' }}>
@@ -319,12 +318,9 @@ function DivergingTooltip({ active, payload, label }) {
       {tracked ? (
         <>
           <div style={{ marginTop: 8 }}>
-            <div style={{ marginBottom: 4 }}>
             <TipRow color={DEFICIT_COLOR}
-              label={r.oopSource === 'merkl' ? 'Total incentive payout (all campaigns)' : 'Incentive payout (est. weekly ÷ 7)'}
-              value={r.totalIncentive} />
-          </div>
-          <TipRow color="#8b95a1" label="Net OOP (above natural flows)" value={r.outOfPocket} dim />
+              label={r.oopSource === 'merkl' ? 'Out-of-pocket (Merkl − natural flows)' : 'Out-of-pocket (weekly budget ÷ 7)'}
+              value={r.outOfPocket} />
           </div>
           <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid #2f3542',
             display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 600,
@@ -360,7 +356,7 @@ function DivergingBarChart({ chartData }) {
     ? (latest.demandNetOfFee ?? 0) + (latest.nimRevenue ?? 0)
     : null;
   const net = latest?.netPosition ?? null;
-  const coverage = latest?.totalIncentive ? (positiveTotal / latest.totalIncentive) * 100 : null;
+  const coverage = latest?.outOfPocket ? (positiveTotal / latest.outOfPocket) * 100 : null;
   const positive = net != null && net >= 0;
   const statusColor = positive ? SURPLUS_COLOR : DEFICIT_COLOR;
 
@@ -392,7 +388,7 @@ function DivergingBarChart({ chartData }) {
             {net < 0 ? '−' : '+'}{formatUSD(Math.abs(net))}/day
           </span>
           <span style={{ color: '#c4c8cc', fontSize: 13 }}>
-            net · {formatUSD(positiveTotal)}/day natural vs {formatUSD(latest.totalIncentive)}/day total incentive payout
+            net · {formatUSD(positiveTotal)}/day natural vs {formatUSD(latest.outOfPocket)}/day OOP
           </span>
           {coverage != null && (
             <span style={{ color: '#71767b', fontSize: 12 }}>· {coverage.toFixed(0)}% covered · goal: 100%</span>
@@ -544,28 +540,22 @@ export default function AaveUsdgTab() {
     const demandNetOfFee = demand != null ? demand * (1 - AAVE_RESERVE_FACTOR) : null;
     const supplyApy = row.supply_apy != null ? parseFloat(row.supply_apy) : null;
 
-    // Total daily incentive payout = all Merkl campaigns combined.
-    // For Merkl-tracked days: use merkl_daily_rewards directly (forward-filled).
-    // For pre-Merkl history:  use weekly budget data (Paxos-only; an undercount).
+    // OOP = total Merkl incentive payout minus what the market generates naturally.
+    // = merkl_daily_rewards − (borrow interest×0.75 + NIM)
+    // For Merkl-tracked days this matches back-calculating from the observed supply rate.
+    // For pre-Merkl history use weekly budget data as fallback.
     const histOop = merklRewards == null ? historicalDailyOop(row.date) : null;
-    const totalIncentive = merklRewards ?? histOop ?? null;
     const oopSource = merklRewards != null ? 'merkl' : histOop != null ? 'historical' : null;
+    const outOfPocket = merklRewards != null && demandNetOfFee != null && nimRevenue != null
+      ? Math.max(merklRewards - demandNetOfFee - nimRevenue, 0)
+      : histOop ?? null;
 
-    // OOP (net) = what the program spends ABOVE what the market generates naturally.
-    // = total incentive payout − (borrow interest×0.75 + NIM)
-    // Verified against observed supply rates: merkl_daily_rewards / supply_tvl × 365
-    //   gives the actual total supply APY, back-calculating OOP matches user's spreadsheet.
-    const outOfPocket = totalIncentive != null && demandNetOfFee != null && nimRevenue != null
-      ? Math.max(totalIncentive - demandNetOfFee - nimRevenue, 0)
-      : null;
-
-    const oopTracked   = totalIncentive != null;
+    const oopTracked   = outOfPocket != null;
     const oopArea      = outOfPocket;
-    const totalSubsidy = (nimRevenue != null && outOfPocket != null) ? nimRevenue + outOfPocket : null;
-    const oopNeg       = totalIncentive != null ? -totalIncentive : null;
-    // Net = natural flows − total incentive payout. Positive = self-sustaining.
-    const netPosition  = totalIncentive != null && demandNetOfFee != null && nimRevenue != null
-      ? demandNetOfFee + nimRevenue - totalIncentive
+    const totalSubsidy = (nimRevenue != null && oopTracked) ? nimRevenue + outOfPocket : null;
+    const oopNeg       = oopTracked ? -outOfPocket : null;
+    const netPosition  = oopTracked && demandNetOfFee != null && nimRevenue != null
+      ? demandNetOfFee + nimRevenue - outOfPocket
       : null;
 
     // Per-day total supply APY = total Merkl spend (OOP + NIM) annualised over supply TVL.
@@ -596,7 +586,6 @@ export default function AaveUsdgTab() {
       idle,
       nimRevenue,
       nimFunded,
-      totalIncentive,
       outOfPocket,
       oopNeg,
       oopSource,
