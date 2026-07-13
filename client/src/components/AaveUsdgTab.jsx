@@ -58,11 +58,16 @@ const SURPLUS_COLOR  = '#22c55e'; // demand exceeds subsidy (self-sustaining)
 const NIM_APY = 0.031; // 3.1% APY
 
 // Paxos-configured total supply APY target delivered via the Merkl Hub campaign.
-// OOP = whatever is needed above the organic rate to hit this target.
+// OOP = whatever is needed above the base rate to hit this target.
 const MERKL_TARGET_APR = 6.2;   // percent
 
 // The current 6.2% campaign started July 7 2026. Before that, use weekly budget data.
 const CAMPAIGN_START = '2026-07-07';
+
+// Aave takes ~25% of borrow interest as a protocol reserve fee before it reaches suppliers.
+// Observed from Aave UI: base supply APY (1.30%) vs our on-chain computed (1.73%) → ~25% cut.
+// Applied to demand in the net calculation so we measure what actually flows to the market.
+const AAVE_RESERVE_FACTOR = 0.25;
 
 // Historical weekly out-of-pocket incentive spend (loaded into Merkl each week).
 // Used as fallback for days the Merkl API cannot look back to. Daily = weekTotal / 7.
@@ -303,7 +308,8 @@ function DivergingTooltip({ active, payload, label }) {
     <div style={{ ...tooltipBase.contentStyle, padding: '10px 14px', minWidth: 240 }}>
       <div style={{ color: '#71767b', marginBottom: 8, fontSize: 12 }}>{label}</div>
 
-      <TipRow color={DEMAND_COLOR} label="Borrow interest" value={r.demand} />
+      <TipRow color={DEMAND_COLOR} label={`Borrow interest (×${(1-AAVE_RESERVE_FACTOR).toFixed(2)} after Aave fee)`} value={r.demandNetOfFee} />
+      <TipRow color="#71767b" label="Gross interest" value={r.demand} dim />
       <TipRow color={NIM_SUB_COLOR} label={`NIM share (idle × ${(NIM_APY * 100).toFixed(1)}%)`} value={r.nimRevenue} />
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 600,
         color: '#e7e9ea', paddingTop: 4, marginTop: 4, borderTop: '1px solid #2f3542' }}>
@@ -347,10 +353,13 @@ function DivergingBarChart({ chartData }) {
   const untrackedFrom = trackedIdx > 0 ? filtered[0] : null;
 
   const latest = [...filtered].reverse().find(d => d.oopNeg != null);
-  const positiveTotal = latest ? (latest.demand ?? 0) + (latest.nimRevenue ?? 0) : null;
-  const net = latest ? (latest.demand ?? 0) - latest.outOfPocket : null;
-  // Coverage: how much of total Merkl spend is covered by demand + NIM. Break-even at 100%.
-  const coverage = latest && latest.merklRewards ? (positiveTotal / latest.merklRewards) * 100 : null;
+  const positiveTotal = latest
+    ? (latest.demandNetOfFee ?? 0) + (latest.nimRevenue ?? 0)
+    : null;
+  const net = latest && latest.outOfPocket != null
+    ? (latest.demandNetOfFee ?? 0) + (latest.nimRevenue ?? 0) - latest.outOfPocket
+    : null;
+  const coverage = latest?.outOfPocket ? (positiveTotal / latest.outOfPocket) * 100 : null;
   const positive = net != null && net >= 0;
   const statusColor = positive ? SURPLUS_COLOR : DEFICIT_COLOR;
 
@@ -360,9 +369,8 @@ function DivergingBarChart({ chartData }) {
         <div>
           <h3 style={{ margin: 0 }}>Daily incentive position</h3>
           <p style={{ color: '#71767b', fontSize: 12, margin: '2px 0 0', maxWidth: 640 }}>
-            Above $0: borrow interest + NIM share from idle USDG, flowing to suppliers.
-            Below $0: Paxos OOP spend = gap between {MERKL_TARGET_APR}% target and base supply rate, times hub TVL.
-            Pre-{CAMPAIGN_START}: weekly campaign budget. Break-even when the positive stack reaches $0.
+            Above $0: borrow interest (after Aave's ~{(AAVE_RESERVE_FACTOR * 100).toFixed(0)}% fee) + NIM share from idle USDG.
+            Below $0: out-of-pocket incentive spend. Net line = market health: positive when natural flows cover OOP.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 4, background: '#1a1f2e', borderRadius: 6, padding: 3 }}>
@@ -383,7 +391,7 @@ function DivergingBarChart({ chartData }) {
             {net < 0 ? '−' : '+'}{formatUSD(Math.abs(net))}/day
           </span>
           <span style={{ color: '#c4c8cc', fontSize: 13 }}>
-            net · {formatUSD(positiveTotal)}/day in (demand + NIM) vs {formatUSD(latest.merklRewards)}/day Merkl spend
+            net · {formatUSD(positiveTotal)}/day in (interest + NIM) vs {formatUSD(latest.outOfPocket)}/day OOP
           </span>
           {coverage != null && (
             <span style={{ color: '#71767b', fontSize: 12 }}>· {coverage.toFixed(0)}% covered · goal: 100%</span>
@@ -392,7 +400,7 @@ function DivergingBarChart({ chartData }) {
       )}
 
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', margin: '4px 0 10px', fontSize: 12, color: '#a9b1ba' }}>
-        <LegendChip color={DEMAND_COLOR} label="Borrow interest" />
+        <LegendChip color={DEMAND_COLOR} label={`Borrow interest (after ~${(AAVE_RESERVE_FACTOR*100).toFixed(0)}% Aave fee)`} />
         <LegendChip color={NIM_SUB_COLOR} label={`NIM share (idle USDG × ${(NIM_APY * 100).toFixed(1)}%)`} />
         <LegendChip color={DEFICIT_COLOR} label="Out-of-pocket (Merkl − NIM)" />
         <LegendChip color="#e7e9ea" line label="Net position" />
@@ -417,7 +425,7 @@ function DivergingBarChart({ chartData }) {
               label={{ value: 'break-even', fill: '#6b7280', fontSize: 11, position: 'insideBottomLeft' }} />
 
             {/* Positive stack: borrow interest (base) + NIM share (top) */}
-            <Bar dataKey="demand"     stackId="pos" fill={DEMAND_COLOR}  fillOpacity={0.85} isAnimationActive={false} />
+            <Bar dataKey="demandNetOfFee" stackId="pos" fill={DEMAND_COLOR} fillOpacity={0.85} isAnimationActive={false} />
             <Bar dataKey="nimRevenue" stackId="pos" fill={NIM_SUB_COLOR} fillOpacity={0.65} radius={[3, 3, 0, 0]} isAnimationActive={false} />
 
             {/* Negative bar: out-of-pocket spend */}
@@ -475,7 +483,10 @@ export default function AaveUsdgTab() {
 
     const nimFunded = null; // kept for CSV compat; no longer meaningful with rate-based OOP
 
-    const demand   = row.daily_interest;
+    const demand         = row.daily_interest;
+    // Only 75% of borrow interest reaches suppliers — Aave takes ~25% as protocol reserve.
+    // The net program health metric uses the after-fee amount, not gross interest.
+    const demandNetOfFee = demand != null ? demand * (1 - AAVE_RESERVE_FACTOR) : null;
     const supplyApy = row.supply_apy != null ? parseFloat(row.supply_apy) : null;
 
     // OOP = what Paxos spends to close the gap between base supply rate and the target APR.
@@ -503,10 +514,11 @@ export default function AaveUsdgTab() {
     const oopArea      = outOfPocket;
     const totalSubsidy = (nimRevenue != null && oopTracked) ? nimRevenue + outOfPocket : null;
     const oopNeg       = oopTracked ? -outOfPocket : null;
-    // Net = demand + NIM − total Merkl spend = demand − (Merkl − NIM) = demand + NIM − outOfPocket
-    // For historical days outOfPocket is already the OOP amount, so net = demand + NIM − OOP.
-    const netPosition  = oopTracked && nimRevenue != null
-      ? (demand ?? 0) + nimRevenue - outOfPocket
+    // Net program health = what the market generates naturally minus what the program injects.
+    // Demand term uses 75% of gross borrow interest — Aave takes ~25% before it reaches suppliers.
+    // Positive = market is self-sustaining; negative = still bootstrapping.
+    const netPosition  = oopTracked && nimRevenue != null && demandNetOfFee != null
+      ? demandNetOfFee + nimRevenue - outOfPocket
       : null;
 
     // Per-day total supply APY = total Merkl spend (OOP + NIM) annualised over supply TVL.
@@ -544,6 +556,7 @@ export default function AaveUsdgTab() {
       totalSupplyApyChart,
       incentiveBoostApy,
       demand,
+      demandNetOfFee,
       oopArea,
       totalSubsidy,
     };
