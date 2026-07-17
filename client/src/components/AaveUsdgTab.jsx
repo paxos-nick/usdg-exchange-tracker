@@ -64,10 +64,6 @@ const MERKL_TARGET_APR = 6.2;   // percent
 // The current 6.2% campaign started July 7 2026. Before that, use weekly budget data.
 const CAMPAIGN_START = '2026-07-07';
 
-// Aave takes ~25% of borrow interest as a protocol reserve fee before it reaches suppliers.
-// Observed from Aave UI: base supply APY (1.30%) vs our on-chain computed (1.73%) → ~25% cut.
-// Applied to demand in the net calculation so we measure what actually flows to the market.
-const AAVE_RESERVE_FACTOR = 0.25;
 
 // Historical weekly out-of-pocket incentive spend (loaded into Merkl each week).
 // Used as fallback for days the Merkl API cannot look back to. Daily = weekTotal / 7.
@@ -301,7 +297,7 @@ function DivergingTooltip({ active, payload, label }) {
   const tracked = r.oopNeg != null;
   const posTotal = (r.demand ?? 0) + (r.nimRevenue ?? 0);
   // Coverage uses after-fee demand — that's the economically correct natural offset
-  const naturalAfterFee = (r.demandNetOfFee ?? 0) + (r.nimRevenue ?? 0);
+  const naturalAfterFee = (r.organicSupplyDaily ?? 0) + (r.nimRevenue ?? 0);
   const net = tracked ? naturalAfterFee - r.outOfPocket : null;
   const coverage = tracked && r.outOfPocket ? (naturalAfterFee / r.outOfPocket) * 100 : null;
   const positive = net != null && net >= 0;
@@ -355,7 +351,7 @@ function DivergingBarChart({ chartData }) {
 
   const latest = [...filtered].reverse().find(d => d.oopNeg != null);
   const positiveTotal = latest
-    ? (latest.demandNetOfFee ?? 0) + (latest.nimRevenue ?? 0)
+    ? (latest.organicSupplyDaily ?? 0) + (latest.nimRevenue ?? 0)
     : null;
   const net = latest?.netPosition ?? null;
   const coverage = latest?.outOfPocket ? (positiveTotal / latest.outOfPocket) * 100 : null;
@@ -369,7 +365,7 @@ function DivergingBarChart({ chartData }) {
           <h3 style={{ margin: 0 }}>Daily incentive position</h3>
           <p style={{ color: '#71767b', fontSize: 12, margin: '2px 0 0', maxWidth: 640 }}>
             Above $0: borrow interest (what borrowers pay) + NIM share from idle USDG.
-            Below $0: out-of-pocket = total Merkl incentive minus natural flows (using borrow interest after Aave's ~{(AAVE_RESERVE_FACTOR * 100).toFixed(0)}% fee).
+            Below $0: out-of-pocket = total Merkl incentive minus organic supply flow and NIM.
             Net line: positive when natural flows cover OOP.
           </p>
         </div>
@@ -539,28 +535,29 @@ export default function AaveUsdgTab() {
 
     const nimFunded = null; // kept for CSV compat; no longer meaningful with rate-based OOP
 
-    const demand         = row.daily_interest;
-    // Only 75% of borrow interest reaches suppliers — Aave takes ~25% as protocol reserve.
-    // The net program health metric uses the after-fee amount, not gross interest.
-    const demandNetOfFee = demand != null ? demand * (1 - AAVE_RESERVE_FACTOR) : null;
+    const demand    = row.daily_interest;
     const supplyApy = row.supply_apy != null ? parseFloat(row.supply_apy) : null;
 
-    // OOP = total Merkl incentive payout minus what the market generates naturally.
-    // = merkl_daily_rewards − (borrow interest×0.75 + NIM)
-    // For Merkl-tracked days this matches back-calculating from the observed supply rate.
-    // For pre-Merkl history use weekly budget data as fallback.
+    // Organic supply flow = what suppliers earn from borrow interest.
+    // supply_apy (= borrow_apy × utilization) applied to total supply gives daily organic income.
+    const organicSupplyDaily = supplyApy != null && totalSupply
+      ? supplyApy / 100 * totalSupply / 365
+      : null;
+
+    // OOP = total Merkl payout − (organic supply flow + NIM).
+    // No reserve factor needed — supply_apy is taken directly from the protocol.
     const histOop = merklRewards == null ? historicalDailyOop(row.date) : null;
     const oopSource = merklRewards != null ? 'merkl' : histOop != null ? 'historical' : null;
-    const outOfPocket = merklRewards != null && demandNetOfFee != null && nimRevenue != null
-      ? Math.max(merklRewards - demandNetOfFee - nimRevenue, 0)
+    const outOfPocket = merklRewards != null && organicSupplyDaily != null && nimRevenue != null
+      ? Math.max(merklRewards - organicSupplyDaily - nimRevenue, 0)
       : histOop ?? null;
 
     const oopTracked   = outOfPocket != null;
     const oopArea      = outOfPocket;
     const totalSubsidy = (nimRevenue != null && oopTracked) ? nimRevenue + outOfPocket : null;
     const oopNeg       = oopTracked ? -outOfPocket : null;
-    const netPosition  = oopTracked && demandNetOfFee != null && nimRevenue != null
-      ? demandNetOfFee + nimRevenue - outOfPocket
+    const netPosition  = oopTracked && organicSupplyDaily != null && nimRevenue != null
+      ? organicSupplyDaily + nimRevenue - outOfPocket
       : null;
 
     // Per-day total supply APY = total Merkl spend (OOP + NIM) annualised over supply TVL.
@@ -598,7 +595,7 @@ export default function AaveUsdgTab() {
       totalSupplyApyChart,
       incentiveBoostApy,
       demand,
-      demandNetOfFee,
+      organicSupplyDaily,
       oopArea,
       totalSubsidy,
     };
