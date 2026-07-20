@@ -1,8 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const cron = require('node-cron');
-const { getAllPools: getOrcaPools } = require('./orca');
-const { getAllPools: getCurvePools } = require('./curve');
+const { getAllPools: getOrcaPools }       = require('./orca');
+const { getAllPools: getCurvePools }       = require('./curve');
+const { getAllPools: getUniswapHoodPools } = require('./uniswapHood');
 const { getLendingData: getKaminoLending } = require('./kamino');
 const { getLendingData: getAaveLending } = require('./aave');
 
@@ -27,11 +28,12 @@ async function takeSnapshot() {
     return null;
   }
 
-  const [orcaPools, curvePools] = await Promise.all([
+  const [orcaPools, curvePools, hoodPools] = await Promise.all([
     getOrcaPools(),
-    getCurvePools()
+    getCurvePools(),
+    getUniswapHoodPools().catch(err => { console.error('[DexSnapshot] UniswapHood error:', err.message); return []; }),
   ]);
-  const allPools = [...orcaPools, ...curvePools];
+  const allPools = [...orcaPools, ...curvePools, ...hoodPools];
 
   const lendingResults = [];
   try {

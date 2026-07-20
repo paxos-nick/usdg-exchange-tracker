@@ -1,7 +1,8 @@
 const cron = require('node-cron');
 const pool = require('../db/pool');
-const orcaService = require('../services/orca');
-const curveService = require('../services/curve');
+const orcaService       = require('../services/orca');
+const curveService      = require('../services/curve');
+const uniswapHoodService = require('../services/uniswapHood');
 const kaminoService = require('../services/kamino');
 const aaveService = require('../services/aave');
 const paxgService   = require('../services/paxg');
@@ -31,15 +32,16 @@ async function runSnapshot() {
     snapshotId = snapResult.rows[0].id;
 
     // Fetch all DeFi data in parallel
-    const [orcaPools, curvePools, vaults, kaminoLending, aaveLending] = await Promise.all([
+    const [orcaPools, curvePools, hoodPools, vaults, kaminoLending, aaveLending] = await Promise.all([
       orcaService.getAllPools().catch(err => { console.error('[Snapshot] Orca error:', err.message); return []; }),
       curveService.getAllPools().catch(err => { console.error('[Snapshot] Curve error:', err.message); return []; }),
+      uniswapHoodService.getAllPools().catch(err => { console.error('[Snapshot] UniswapHood error:', err.message); return []; }),
       kaminoService.getAllVaults().catch(err => { console.error('[Snapshot] Kamino vaults error:', err.message); return []; }),
       kaminoService.getLendingData(),
       aaveService.getLendingData()
     ]);
 
-    const allPools = [...orcaPools, ...curvePools];
+    const allPools = [...orcaPools, ...curvePools, ...hoodPools];
 
     // Insert DEX pool snapshots
     for (const p of allPools) {
