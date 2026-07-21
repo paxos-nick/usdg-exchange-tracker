@@ -165,9 +165,9 @@ export default function OverallVolumeChart() {
     (cexData?.exchanges || []).forEach(ex => {
       row[ex] = d.byExchange?.[ex] || 0;
     });
-    row.orca         = d.date === today ? orcaVolume24h  : (orcaHistoryByDate[d.date]  || 0);
-    row.curve        = d.date === today ? curveVolume24h : (curveHistoryByDate[d.date] || 0);
-    row.uniswap_hood = d.date === today ? hoodVolume24h  : (hoodHistoryByDate[d.date]  || 0);
+    row.orca         = orcaHistoryByDate[d.date]  ?? (d.date === today ? orcaVolume24h  : 0);
+    row.curve        = curveHistoryByDate[d.date] ?? (d.date === today ? curveVolume24h : 0);
+    row.uniswap_hood = hoodHistoryByDate[d.date]  ?? (d.date === today ? hoodVolume24h  : 0);
     return row;
   });
 
