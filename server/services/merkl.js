@@ -7,6 +7,8 @@ const CHAIN_ID  = 1; // Ethereum mainnet
 const USDG_SUPPLY_TYPES = new Set([
   'AAVE_V4_HUB_SUPPLY',
   'AAVE_V4_SPOKE_SUPPLY',
+  'AAVE_V4_HUB_NET_LENDING', // new campaign type used from July 2026
+  'AAVE_NET_LENDING',
   'ERC20LOGPROCESSOR', // wrapped aToken holders
 ]);
 
