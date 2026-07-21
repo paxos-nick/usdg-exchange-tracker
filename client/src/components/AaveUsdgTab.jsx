@@ -297,7 +297,7 @@ function DivergingTooltip({ active, payload, label }) {
   const tracked = r.oopNeg != null;
   const posTotal = (r.demand ?? 0) + (r.nimRevenue ?? 0);
   // Coverage uses after-fee demand — that's the economically correct natural offset
-  const naturalAfterFee = (r.organicSupplyDaily ?? 0) + (r.nimRevenue ?? 0);
+  const naturalAfterFee = (r.demand ?? 0) + (r.nimRevenue ?? 0);
   const net = tracked ? naturalAfterFee - r.outOfPocket : null;
   const coverage = tracked && r.outOfPocket ? (naturalAfterFee / r.outOfPocket) * 100 : null;
   const positive = net != null && net >= 0;
@@ -317,7 +317,7 @@ function DivergingTooltip({ active, payload, label }) {
         <>
           <div style={{ marginTop: 8 }}>
             <TipRow color={DEFICIT_COLOR}
-              label={r.oopSource === 'merkl' ? 'Out-of-pocket (Merkl − natural flows)' : 'Out-of-pocket (weekly budget ÷ 7)'}
+              label={r.oopSource === 'merkl' ? 'Merkl daily spend' : 'Merkl est. (weekly budget ÷ 7)'}
               value={r.outOfPocket} />
           </div>
           <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid #2f3542',
@@ -351,7 +351,7 @@ function DivergingBarChart({ chartData }) {
 
   const latest = [...filtered].reverse().find(d => d.oopNeg != null);
   const positiveTotal = latest
-    ? (latest.organicSupplyDaily ?? 0) + (latest.nimRevenue ?? 0)
+    ? (latest.demand ?? 0) + (latest.nimRevenue ?? 0)
     : null;
   const net = latest?.netPosition ?? null;
   const coverage = latest?.outOfPocket ? (positiveTotal / latest.outOfPocket) * 100 : null;
@@ -400,7 +400,7 @@ function DivergingBarChart({ chartData }) {
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', margin: '4px 0 10px', fontSize: 12, color: '#a9b1ba' }}>
         <LegendChip color={DEMAND_COLOR} label="Borrow interest" />
         <LegendChip color={NIM_SUB_COLOR} label={`NIM share (idle USDG × ${(NIM_APY * 100).toFixed(1)}%)`} />
-        <LegendChip color={DEFICIT_COLOR} label="Out-of-pocket (Merkl − NIM)" />
+        <LegendChip color={DEFICIT_COLOR} label="Merkl daily spend" />
         <LegendChip color="#e7e9ea" line label="Net position" />
       </div>
 
@@ -540,34 +540,29 @@ export default function AaveUsdgTab() {
     const demand    = row.daily_interest;
     const supplyApy = row.supply_apy != null ? parseFloat(row.supply_apy) : null;
 
-    // Organic supply flow = what suppliers earn from borrow interest.
-    // supply_apy (= borrow_apy × utilization) applied to total supply gives daily organic income.
-    const organicSupplyDaily = supplyApy != null && totalSupply
-      ? supplyApy / 100 * totalSupply / 365
-      : null;
-
-    // OOP = total Merkl payout − (organic supply flow + NIM).
-    // No reserve factor needed — supply_apy is taken directly from the protocol.
+    // OOP = Merkl daily spend. Merkl automatically tops up whatever the organic rate
+    // doesn't cover to maintain the 6.18% target. The organic interest and NIM flow
+    // to suppliers through the protocol separately — Merkl's payout is purely the
+    // incremental cash being deployed.
     const histOop = merklRewards == null ? historicalDailyOop(row.date) : null;
     const oopSource = merklRewards != null ? 'merkl' : histOop != null ? 'historical' : null;
-    const outOfPocket = merklRewards != null && organicSupplyDaily != null && nimRevenue != null
-      ? Math.max(merklRewards - organicSupplyDaily - nimRevenue, 0)
-      : histOop ?? null;
+    const outOfPocket = merklRewards != null ? merklRewards : histOop ?? null;
 
     const oopTracked   = outOfPocket != null;
     const oopArea      = outOfPocket;
     const totalSubsidy = (nimRevenue != null && oopTracked) ? nimRevenue + outOfPocket : null;
     const oopNeg       = oopTracked ? -outOfPocket : null;
-    const netPosition  = oopTracked && organicSupplyDaily != null && nimRevenue != null
-      ? organicSupplyDaily + nimRevenue - outOfPocket
+    // Net = natural flows to the market (borrow interest + NIM) minus Merkl spend.
+    // Positive when the market generates enough organically to offset incentive cost.
+    const netPosition  = oopTracked && nimRevenue != null
+      ? demand + nimRevenue - outOfPocket
       : null;
 
     // Total supply APY: prefer merkl_hub_apr directly — the campaign's configured target rate.
     // That's the number Aave shows (e.g. 6.0%). Computing from dailyRewards×365/TVL gives the
     // same thing in principle, but the hub_apr is more stable and avoids TVL-denominator drift.
     // Fall back to dailyRewards computation for historical days before hub_apr was stored.
-    const totalDailyMerkl = merklRewards ??
-      (outOfPocket != null && nimRevenue != null ? outOfPocket + nimRevenue : null);
+    const totalDailyMerkl = merklRewards ?? outOfPocket ?? null;
     const rawTotalSupplyApy = row.merkl_hub_apr != null
       ? row.merkl_hub_apr  // directly the campaign-configured total APY
       : (totalDailyMerkl != null && totalSupply
@@ -599,7 +594,6 @@ export default function AaveUsdgTab() {
       totalSupplyApyChart,
       incentiveBoostApy,
       demand,
-      organicSupplyDaily,
       oopArea,
       totalSubsidy,
     };
