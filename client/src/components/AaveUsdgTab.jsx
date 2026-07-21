@@ -562,15 +562,17 @@ export default function AaveUsdgTab() {
       ? organicSupplyDaily + nimRevenue - outOfPocket
       : null;
 
-    // Per-day total supply APY = total Merkl spend (OOP + NIM) annualised over supply TVL.
-    // For Merkl-tracked days: merklRewards is total; for historical: reconstruct as OOP + NIM.
+    // Total supply APY: prefer merkl_hub_apr directly — the campaign's configured target rate.
+    // That's the number Aave shows (e.g. 6.0%). Computing from dailyRewards×365/TVL gives the
+    // same thing in principle, but the hub_apr is more stable and avoids TVL-denominator drift.
+    // Fall back to dailyRewards computation for historical days before hub_apr was stored.
     const totalDailyMerkl = merklRewards ??
       (outOfPocket != null && nimRevenue != null ? outOfPocket + nimRevenue : null);
-    // Cap at 50% — early dates had tiny TVL so the calculated APY is nonsensically large.
-    // Those data points are visually meaningless and break the Y-axis scale.
-    const rawTotalSupplyApy = totalDailyMerkl != null && totalSupply
-      ? totalDailyMerkl * 365 / totalSupply * 100
-      : null;
+    const rawTotalSupplyApy = row.merkl_hub_apr != null
+      ? row.merkl_hub_apr  // directly the campaign-configured total APY
+      : (totalDailyMerkl != null && totalSupply
+          ? totalDailyMerkl * 365 / totalSupply * 100
+          : null);
     const totalSupplyApyChart = rawTotalSupplyApy != null && rawTotalSupplyApy > 0 && rawTotalSupplyApy <= 50
       ? rawTotalSupplyApy
       : null;
@@ -623,13 +625,14 @@ export default function AaveUsdgTab() {
   // Total supply APY = Merkl daily rewards annualised over total supply.
   // This is the full rate (organic already included), not an add-on.
   // The incentive boost = total - organic (the incremental program contribution).
-  // Only use Merkl data when there's an active campaign (rewards > 0).
-  // When campaigns have ended, fall back to organic rate so the stat card
-  // shows the true market rate rather than 0%.
+  // Prefer merkl_hub_apr (campaign-configured total rate) for the stat card.
+  // Fall back to deriving from daily rewards / TVL, then to organic-only if no campaign.
   const latestMerkl = [...chartData].reverse().find(d => d.merklRewards > 0);
-  const totalSupplyApy = latestMerkl && totalSupply
-    ? (latestMerkl.merklRewards * 365) / totalSupply * 100
-    : organicSupplyApy ?? null;
+  const latestHubApr = [...chartData].reverse().find(d => d.supplyApy != null && (d.totalSupplyApyChart ?? 0) > 0);
+  const totalSupplyApy = latestHubApr?.totalSupplyApyChart
+    ?? (latestMerkl && totalSupply ? (latestMerkl.merklRewards * 365) / totalSupply * 100 : null)
+    ?? organicSupplyApy
+    ?? null;
   const incentiveBoost = totalSupplyApy != null && organicSupplyApy != null
     ? Math.max(totalSupplyApy - organicSupplyApy, 0)
     : null;
