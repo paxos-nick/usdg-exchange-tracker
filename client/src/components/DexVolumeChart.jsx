@@ -25,8 +25,9 @@ function formatDate(dateStr) {
 }
 
 const CHAIN_COLORS = {
-  solana: '#9945FF',
-  ethereum: '#627EEA'
+  solana:    '#9945FF',
+  ethereum:  '#627EEA',
+  robinhood: '#00d4aa',
 };
 
 function ChainVolumeChart({ history }) {
