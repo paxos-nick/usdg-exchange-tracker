@@ -520,7 +520,9 @@ export default function AaveUsdgTab() {
   const chartData = history.map(row => {
     const totalDebt   = row.total_debt;
     const totalSupply = row.total_supply ?? null;
-    const rawMerkl = row.merkl_daily_rewards ?? null;
+    // Treat 0 as null: 0 daily rewards means no active campaign (same as missing data).
+    // This prevents a 0 from being forward-filled into subsequent days and showing 0% APY.
+    const rawMerkl = row.merkl_daily_rewards || null;
     if (rawMerkl != null) _lastMerkl = rawMerkl;
     const merklRewards = rawMerkl != null ? rawMerkl : _lastMerkl; // null until first tracked day
 
@@ -569,7 +571,7 @@ export default function AaveUsdgTab() {
     const rawTotalSupplyApy = totalDailyMerkl != null && totalSupply
       ? totalDailyMerkl * 365 / totalSupply * 100
       : null;
-    const totalSupplyApyChart = rawTotalSupplyApy != null && rawTotalSupplyApy <= 50
+    const totalSupplyApyChart = rawTotalSupplyApy != null && rawTotalSupplyApy > 0 && rawTotalSupplyApy <= 50
       ? rawTotalSupplyApy
       : null;
     const incentiveBoostApy = totalSupplyApyChart != null && supplyApy != null
@@ -621,7 +623,10 @@ export default function AaveUsdgTab() {
   // Total supply APY = Merkl daily rewards annualised over total supply.
   // This is the full rate (organic already included), not an add-on.
   // The incentive boost = total - organic (the incremental program contribution).
-  const latestMerkl = [...chartData].reverse().find(d => d.merklRewards != null);
+  // Only use Merkl data when there's an active campaign (rewards > 0).
+  // When campaigns have ended, fall back to organic rate so the stat card
+  // shows the true market rate rather than 0%.
+  const latestMerkl = [...chartData].reverse().find(d => d.merklRewards > 0);
   const totalSupplyApy = latestMerkl && totalSupply
     ? (latestMerkl.merklRewards * 365) / totalSupply * 100
     : organicSupplyApy ?? null;
