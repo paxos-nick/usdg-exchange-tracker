@@ -191,6 +191,35 @@ function aggregateBy(daily, unit) {
   return Object.values(buckets).sort((a, b) => a.sort.localeCompare(b.sort));
 }
 
+// Adds QoQ growth % and current-quarter projection to quarterly data
+function processQuarterlyData(quarters) {
+  const today = new Date();
+  const curYear = today.getFullYear();
+  const curQ    = Math.ceil((today.getMonth() + 1) / 3);
+  const curKey  = `${curYear}-Q${curQ}`;
+
+  return quarters.map((q, i) => {
+    const prev = quarters[i - 1];
+    const qoqGrowth = prev && prev.total > 0
+      ? ((q.total - prev.total) / prev.total) * 100
+      : null;
+
+    let projectedRemaining = 0;
+    const isCurrentQuarter = q.period === curKey;
+
+    if (isCurrentQuarter && q.total > 0) {
+      const [qYear, qNum] = q.period.split('-Q').map(Number);
+      const qStart     = new Date(qYear, (qNum - 1) * 3, 1);
+      const qEnd       = new Date(qYear, (qNum - 1) * 3 + 3, 0);
+      const totalDays  = Math.round((qEnd - qStart) / 86400000) + 1;
+      const elapsed    = Math.max(Math.round((today - qStart) / 86400000) + 1, 1);
+      projectedRemaining = Math.max((q.total / elapsed) * totalDays - q.total, 0);
+    }
+
+    return { ...q, qoqGrowth, projectedRemaining, isCurrentQuarter };
+  });
+}
+
 function sliceView(daily, view) {
   if (view === '30d') return daily.slice(-30);
   const agg = aggregateBy(daily, view === '12m' ? 'month' : 'quarter');
@@ -345,7 +374,10 @@ export default function GdpTab() {
      krakenData, gateData, kucoinPairs, kucoinTotal, hoodOhlcv]
   );
 
-  const chart1 = useMemo(() => sliceView(daily, view1).map(r => ({ ...r, displayDate: fmtLabel(r, view1) })), [daily, view1]);
+  const chart1 = useMemo(() => {
+    const sliced = sliceView(daily, view1).map(r => ({ ...r, displayDate: fmtLabel(r, view1) }));
+    return view1 === '4q' ? processQuarterlyData(sliced) : sliced;
+  }, [daily, view1]);
   const chart2 = useMemo(() => sliceView(daily, view2).map(r => ({ ...r, displayDate: fmtLabel(r, view2) })), [daily, view2]);
   const chart3 = useMemo(() => sliceView(daily, view3).map(r => {
     let breakdown;
@@ -404,18 +436,66 @@ export default function GdpTab() {
           {/* ── CHART 1: by category ── */}
           <ChartSection title="GDP by Category"
             controls={<ViewToggle value={view1} onChange={setView1} />}>
-            <div style={{ height: 300 }}>
+            {/* Hidden SVG pattern for quarterly projection bar */}
+            <svg style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}>
+              <defs>
+                <pattern id="gdp-proj-stripe" x="0" y="0" width="6" height="6"
+                  patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                  <line x1="0" y1="0" x2="0" y2="6" stroke="#ef4444" strokeWidth="2.5" opacity="0.55" />
+                </pattern>
+              </defs>
+            </svg>
+            <div style={{ height: view1 === '4q' ? 330 : 300 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chart1} margin={{ top: 10, right: 16, left: 8, bottom: 5 }} barCategoryGap="18%">
+                <BarChart data={chart1} margin={{ top: view1 === '4q' ? 28 : 10, right: 16, left: 8, bottom: 5 }} barCategoryGap="18%">
                   <CartesianGrid strokeDasharray="3 3" stroke={C_GRID} />
                   <XAxis dataKey="displayDate" {...axisProps} />
                   <YAxis stroke={C_DIM} tick={{ fill: C_DIM, fontSize: 11 }} tickFormatter={fmtShort} width={62} />
                   <Tooltip content={<CategoryTooltip />} cursor={{ fill: C_CURSOR }} />
                   <Legend iconType="square" wrapperStyle={{ color: C_DIM, fontSize: 12 }}
-                    formatter={v => ({ borrowerInterest: 'Borrower interest', tradingFees: 'Trading fees', gdnRewards: 'GDN rewards' }[v] || v)} />
+                    formatter={v => ({
+                      borrowerInterest: 'Borrower interest', tradingFees: 'Trading fees',
+                      gdnRewards: 'GDN rewards', projectedRemaining: 'Projected (rest of quarter)',
+                    }[v] || v)} />
                   <Bar dataKey="borrowerInterest" stackId="a" fill={C_BORROW}  isAnimationActive={false} />
                   <Bar dataKey="tradingFees"      stackId="a" fill={C_TRADING} isAnimationActive={false} />
-                  <Bar dataKey="gdnRewards"       stackId="a" fill={C_REWARDS} radius={[3,3,0,0]} isAnimationActive={false} />
+                  <Bar dataKey="gdnRewards"       stackId="a" fill={C_REWARDS}
+                    radius={view1 !== '4q' ? [3,3,0,0] : [0,0,0,0]} isAnimationActive={false}>
+                    {view1 === '4q' && (
+                      <LabelList content={(props) => {
+                        const { x, y, width, index } = props;
+                        const row = chart1[index];
+                        if (!row?.qoqGrowth && row?.qoqGrowth !== 0) return null;
+                        const pct = row.qoqGrowth;
+                        const color = pct >= 0 ? '#29a784' : '#ef4444';
+                        // Position above the full actual stack (no projection included)
+                        return (
+                          <text x={x + width / 2} y={y - 6} textAnchor="middle"
+                            fill={color} fontSize={11} fontWeight={700}>
+                            {pct >= 0 ? '+' : ''}{pct.toFixed(0)}%
+                          </text>
+                        );
+                      }} />
+                    )}
+                  </Bar>
+                  {view1 === '4q' && (
+                    <Bar dataKey="projectedRemaining" stackId="a"
+                      fill="url(#gdp-proj-stripe)" stroke="#ef4444" strokeWidth={1}
+                      strokeDasharray="4 2" radius={[3,3,0,0]} isAnimationActive={false}>
+                      <LabelList content={(props) => {
+                        const { x, y, width, index } = props;
+                        const row = chart1[index];
+                        if (!row?.isCurrentQuarter || !row?.projectedRemaining) return null;
+                        const proj = (row.total || 0) + (row.projectedRemaining || 0);
+                        return (
+                          <text x={x + width / 2} y={y - 5} textAnchor="middle"
+                            fill="#ef4444" fontSize={10} fontWeight={600}>
+                            {fmtShort(proj)} est.
+                          </text>
+                        );
+                      }} />
+                    </Bar>
+                  )}
                 </BarChart>
               </ResponsiveContainer>
             </div>
