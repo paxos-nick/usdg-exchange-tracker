@@ -26,6 +26,7 @@ const C_CURSOR   = 'rgba(25,40,47,0.04)';
 const NIM_APY    = 0.031;
 const STABLE_FEE = 0.0002;
 const RISK_FEE   = 0.0007;
+const HOOD_FEE   = 0.0001; // ETH/USDG v3 pool on-chain fee: 1 bps (0.01%), confirmed via fee() call
 
 const VENUES = ['aave', 'okx', 'bullish', 'kraken', 'gate', 'kucoin', 'uniswap_hood'];
 
@@ -136,9 +137,9 @@ function computeDaily(aaveHist, okxData, bullishPairs, bullishTotal, supplyByDat
       add(row.date, { kucoinStable: (row.volume || 0) * STABLE_FEE });
   }
 
-  // Uniswap Hood: OHLCV-accurate daily volumes; ETH/USDG dominates → 7bps (risk)
+  // Uniswap Hood: OHLCV-accurate daily volumes; ETH/USDG v3 pool fee = 1 bps (confirmed on-chain)
   for (const row of (hoodOhlcv?.history || []))
-    if (row.volume > 0) add(row.date, { uniswapHoodTrading: (row.volume || 0) * RISK_FEE });
+    if (row.volume > 0) add(row.date, { uniswapHoodTrading: (row.volume || 0) * HOOD_FEE });
 
   return Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date)).map(r => {
     const borrowerInterest = r.aaveBorrow;
