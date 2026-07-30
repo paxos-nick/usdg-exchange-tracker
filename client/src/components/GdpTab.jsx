@@ -33,7 +33,7 @@ const VENUE_COLORS = { aave: C_AAVE, okx: C_OKX, bullish: C_BULLISH };
 
 // ── Data computation ──────────────────────────────────────────────────────────────
 
-function computeDaily(aaveHist, okxData, bullishPairs) {
+function computeDaily(aaveHist, okxData, bullishPairs, bullishTotal) {
   const byDate = {};
   const add = (date, patch) => {
     byDate[date] = byDate[date] || { date, aaveBorrow: 0, aaveNim: 0, okxTrading: 0, bullishStable: 0, bullishRisk: 0 };
@@ -47,11 +47,21 @@ function computeDaily(aaveHist, okxData, bullishPairs) {
   for (const row of (okxData?.dailyVolume || []))
     add(row.date, { okxTrading: (row.volume || 0) * STABLE_FEE });
 
+  // Use per-pair data (accurate stable/risk split) when available,
+  // fall back to total Bullish volume at stable fee when pair data is absent
+  // (pair endpoint takes ~8s on a cold Railway start, causing browser timeouts)
   const bpv = bullishPairs?.volumeByPair || {};
-  for (const row of (bpv['USDGUSDC'] || []))
-    add(row.date, { bullishStable: (row.volume || 0) * STABLE_FEE });
-  for (const row of (bpv['BTCUSDG'] || []))
-    add(row.date, { bullishRisk: (row.volume || 0) * RISK_FEE });
+  const hasPairData = (bpv['USDGUSDC']?.length > 0) || (bpv['BTCUSDG']?.length > 0);
+  if (hasPairData) {
+    for (const row of (bpv['USDGUSDC'] || []))
+      add(row.date, { bullishStable: (row.volume || 0) * STABLE_FEE });
+    for (const row of (bpv['BTCUSDG'] || []))
+      add(row.date, { bullishRisk: (row.volume || 0) * RISK_FEE });
+  } else {
+    // Fallback: total volume, treat as stable-dominant (USDGUSDC is typically the larger pair)
+    for (const row of (bullishTotal?.dailyVolume || []))
+      add(row.date, { bullishStable: (row.volume || 0) * STABLE_FEE });
+  }
 
   return Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date)).map(r => {
     const borrowerInterest = r.aaveBorrow;
@@ -211,11 +221,12 @@ export default function GdpTab() {
   const [activeVenues, setActiveVenues] = useState(new Set(VENUES));
   const [selectedVenue, setSelectedVenue] = useState('aave');
 
-  const { data: aaveHist,     loading: l1 } = useAaveUsdgHistory();
-  const { data: okxData,      loading: l2 } = useVolumeData('okx');
-  const { data: bullishPairs, loading: l3 } = usePairVolumeData('bullish');
+  const { data: aaveHist,      loading: l1 } = useAaveUsdgHistory();
+  const { data: okxData,       loading: l2 } = useVolumeData('okx');
+  const { data: bullishTotal,  loading: l3 } = useVolumeData('bullish');      // fast, always works
+  const { data: bullishPairs,  loading: l4 } = usePairVolumeData('bullish');  // slow first load, gives stable/risk split
 
-  const daily = useMemo(() => computeDaily(aaveHist, okxData, bullishPairs), [aaveHist, okxData, bullishPairs]);
+  const daily = useMemo(() => computeDaily(aaveHist, okxData, bullishPairs, bullishTotal), [aaveHist, okxData, bullishPairs, bullishTotal]);
 
   const chart1 = useMemo(() => sliceView(daily, view1).map(r => ({ ...r, displayDate: fmtLabel(r, view1) })), [daily, view1]);
   const chart2 = useMemo(() => sliceView(daily, view2).map(r => ({ ...r, displayDate: fmtLabel(r, view2) })), [daily, view2]);
@@ -240,7 +251,7 @@ export default function GdpTab() {
     return next;
   });
 
-  const loading = l1 || l2 || l3;
+  const loading = l1 || l2 || l3; // l4 (bullishPairs) is non-blocking — renders without split data if slow
 
   const axisProps = {
     stroke: C_DIM, tick: { fill: C_DIM, fontSize: 11 }, tickMargin: 8, interval: 'preserveStartEnd',
