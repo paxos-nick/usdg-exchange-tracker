@@ -3,7 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, LabelList
 } from 'recharts';
-import { useAaveUsdgHistory, useVolumeData, usePairVolumeData, useUsdgSupply } from '../hooks/useVolumeData';
+import { useAaveUsdgHistory, useVolumeData, usePairVolumeData, useUsdgSupply, useHoodVolumeHistory } from '../hooks/useVolumeData';
 
 // ── Paxos brand palette ───────────────────────────────────────────────────────────
 const GDP_BG      = '#f6f8fb';           // Paxos light background
@@ -27,7 +27,7 @@ const NIM_APY    = 0.031;
 const STABLE_FEE = 0.0002;
 const RISK_FEE   = 0.0007;
 
-const VENUES = ['aave', 'okx', 'bullish'];
+const VENUES = ['aave', 'okx', 'bullish', 'kraken', 'gate', 'kucoin', 'uniswap_hood'];
 
 // Chain-level GDN reward breakdown
 const CHAIN_KEYS   = ['ethereum', 'solana', 'xlayer', 'robinhood', 'ink', 'arbitrum'];
@@ -35,8 +35,10 @@ const CHAIN_LABELS = { ethereum: 'Ethereum', solana: 'Solana', xlayer: 'xLayer',
   robinhood: 'Robinhood', ink: 'Ink', arbitrum: 'Arbitrum' };
 const CHAIN_COLORS = { ethereum: '#0094d8', solana: '#9945FF', xlayer: '#43494e',
   robinhood: '#c7e36c', ink: '#19282f', arbitrum: '#28a0f0' };
-const VENUE_LABELS = { aave: 'AAVE', okx: 'OKX', bullish: 'Bullish' };
-const VENUE_COLORS = { aave: C_AAVE, okx: C_OKX, bullish: C_BULLISH };
+const VENUE_LABELS = { aave: 'AAVE', okx: 'OKX', bullish: 'Bullish',
+  kraken: 'Kraken', gate: 'Gate', kucoin: 'KuCoin', uniswap_hood: 'Hood (Uniswap)' };
+const VENUE_COLORS = { aave: C_AAVE, okx: C_OKX, bullish: C_BULLISH,
+  kraken: '#5741d9', gate: '#0ba5ec', kucoin: '#29a784', uniswap_hood: '#ff007a' };
 
 // ── Data computation ──────────────────────────────────────────────────────────────
 
@@ -85,55 +87,77 @@ function buildSupplyByDate(supplyHistory) {
   return byDate;
 }
 
-function computeDaily(aaveHist, okxData, bullishPairs, bullishTotal, supplyByDate) {
+function computeDaily(aaveHist, okxData, bullishPairs, bullishTotal, supplyByDate,
+  krakenData, gateData, kucoinPairs, kucoinTotal, hoodOhlcv) {
   const byDate = {};
   const add = (date, patch) => {
-    byDate[date] = byDate[date] || { date, aaveBorrow: 0, aaveNim: 0, okxTrading: 0, bullishStable: 0, bullishRisk: 0 };
+    if (!byDate[date]) byDate[date] = { date, aaveBorrow: 0, aaveNim: 0, okxTrading: 0,
+      bullishStable: 0, bullishRisk: 0, krakenTrading: 0, gateTrading: 0,
+      kucoinStable: 0, kucoinRisk: 0, uniswapHoodTrading: 0 };
     Object.assign(byDate[date], patch);
   };
 
   for (const row of (aaveHist?.history || [])) {
-    // aaveNim is kept as fallback for days before chain supply logging began
     const idle = Math.max((row.total_supply || 0) - (row.total_debt || 0), 0);
     add(row.date, { aaveBorrow: row.daily_interest || 0, aaveNim: idle * NIM_APY / 365 });
   }
   for (const row of (okxData?.dailyVolume || []))
     add(row.date, { okxTrading: (row.volume || 0) * STABLE_FEE });
 
-  // Use per-pair data (accurate stable/risk split) when available,
-  // fall back to total Bullish volume at stable fee when pair data is absent
-  // (pair endpoint takes ~8s on a cold Railway start, causing browser timeouts)
+  // Bullish: stable/risk split with total fallback
   const bpv = bullishPairs?.volumeByPair || {};
-  const hasPairData = (bpv['USDGUSDC']?.length > 0) || (bpv['BTCUSDG']?.length > 0);
-  if (hasPairData) {
+  if ((bpv['USDGUSDC']?.length || 0) > 0 || (bpv['BTCUSDG']?.length || 0) > 0) {
     for (const row of (bpv['USDGUSDC'] || []))
       add(row.date, { bullishStable: (row.volume || 0) * STABLE_FEE });
     for (const row of (bpv['BTCUSDG'] || []))
       add(row.date, { bullishRisk: (row.volume || 0) * RISK_FEE });
   } else {
-    // Fallback: total volume, treat as stable-dominant (USDGUSDC is typically the larger pair)
     for (const row of (bullishTotal?.dailyVolume || []))
       add(row.date, { bullishStable: (row.volume || 0) * STABLE_FEE });
   }
 
+  // Kraken: USDG/USD, USDG/USDC, USDG/USDT — all stable/fiat (2bps)
+  for (const row of (krakenData?.dailyVolume || []))
+    add(row.date, { krakenTrading: (row.volume || 0) * STABLE_FEE });
+
+  // Gate: USDG/USDT — stable (2bps)
+  for (const row of (gateData?.dailyVolume || []))
+    add(row.date, { gateTrading: (row.volume || 0) * STABLE_FEE });
+
+  // KuCoin: USDG/USDT (2bps) + BTC/USDG (7bps); total fallback at stable rate
+  const kpv = kucoinPairs?.volumeByPair || {};
+  if ((kpv['USDG/USDT']?.length || 0) > 0 || (kpv['BTC/USDG']?.length || 0) > 0) {
+    for (const row of (kpv['USDG/USDT'] || []))
+      add(row.date, { kucoinStable: (row.volume || 0) * STABLE_FEE });
+    for (const row of (kpv['BTC/USDG'] || []))
+      add(row.date, { kucoinRisk: (row.volume || 0) * RISK_FEE });
+  } else {
+    for (const row of (kucoinTotal?.dailyVolume || []))
+      add(row.date, { kucoinStable: (row.volume || 0) * STABLE_FEE });
+  }
+
+  // Uniswap Hood: OHLCV-accurate daily volumes; ETH/USDG dominates → 7bps (risk)
+  for (const row of (hoodOhlcv?.history || []))
+    if (row.volume > 0) add(row.date, { uniswapHoodTrading: (row.volume || 0) * RISK_FEE });
+
   return Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date)).map(r => {
     const borrowerInterest = r.aaveBorrow;
-    const tradingFees      = r.okxTrading + r.bullishStable + r.bullishRisk;
-    // GDN rewards = total circulating supply across all chains × NIM_APY / 365.
-    // Use logged chain supply when available; fall back to AAVE idle proxy until
-    // supply snapshots accumulate.
+    const tradingFees = r.okxTrading + r.bullishStable + r.bullishRisk
+      + r.krakenTrading + r.gateTrading + r.kucoinStable + r.kucoinRisk + r.uniswapHoodTrading;
     const chainSupply = supplyByDate?.[r.date];
-    const gdnRewards  = chainSupply != null
-      ? chainSupply * NIM_APY / 365
-      : r.aaveNim; // fallback: AAVE idle only
+    const gdnRewards  = chainSupply != null ? chainSupply * NIM_APY / 365 : r.aaveNim;
     return {
       ...r,
       borrowerInterest, tradingFees, gdnRewards,
       hasChainSupply: chainSupply != null,
-      aave:    r.aaveBorrow + r.aaveNim,
-      okx:     r.okxTrading,
-      bullish: r.bullishStable + r.bullishRisk,
-      total:   borrowerInterest + tradingFees + gdnRewards,
+      aave:         r.aaveBorrow + r.aaveNim,
+      okx:          r.okxTrading,
+      bullish:      r.bullishStable + r.bullishRisk,
+      kraken:       r.krakenTrading,
+      gate:         r.gateTrading,
+      kucoin:       r.kucoinStable + r.kucoinRisk,
+      uniswap_hood: r.uniswapHoodTrading,
+      total:        borrowerInterest + tradingFees + gdnRewards,
     };
   });
 }
@@ -158,8 +182,9 @@ function aggregateBy(daily, unit) {
     }
     if (!buckets[key]) buckets[key] = { period: key, label, sort,
       borrowerInterest: 0, tradingFees: 0, gdnRewards: 0,
-      aave: 0, okx: 0, bullish: 0, total: 0 };
-    for (const k of ['borrowerInterest','tradingFees','gdnRewards','aave','okx','bullish','total'])
+      aave: 0, okx: 0, bullish: 0, kraken: 0, gate: 0, kucoin: 0, uniswap_hood: 0, total: 0 };
+    for (const k of ['borrowerInterest','tradingFees','gdnRewards',
+      'aave','okx','bullish','kraken','gate','kucoin','uniswap_hood','total'])
       buckets[key][k] += row[k] || 0;
   }
   return Object.values(buckets).sort((a, b) => a.sort.localeCompare(b.sort));
@@ -267,9 +292,13 @@ const CategoryTooltip = makeTooltip([
 ]);
 
 const VenueTooltip = makeTooltip([
-  { key: 'aave',    label: 'AAVE',    color: C_AAVE },
-  { key: 'okx',     label: 'OKX',     color: C_OKX },
-  { key: 'bullish', label: 'Bullish', color: C_BULLISH },
+  { key: 'aave',         label: 'AAVE',           color: C_AAVE },
+  { key: 'okx',          label: 'OKX',            color: C_OKX },
+  { key: 'bullish',      label: 'Bullish',         color: C_BULLISH },
+  { key: 'kraken',       label: 'Kraken',          color: '#5741d9' },
+  { key: 'gate',         label: 'Gate',            color: '#0ba5ec' },
+  { key: 'kucoin',       label: 'KuCoin',          color: '#29a784' },
+  { key: 'uniswap_hood', label: 'Hood (Uniswap)',  color: '#ff007a' },
 ]);
 
 // ── Main component ────────────────────────────────────────────────────────────────
@@ -279,14 +308,26 @@ export default function GdpTab() {
   const [view2, setView2]           = useState('30d');
   const [view3, setView3]           = useState('30d');
   const [view4, setView4]           = useState('30d');
+  const [activeChains, setActiveChains] = useState(new Set(CHAIN_KEYS));
+
+  const toggleChain = k => setActiveChains(prev => {
+    const next = new Set(prev);
+    next.has(k) ? next.delete(k) : next.add(k);
+    return next;
+  });
   const [activeVenues, setActiveVenues] = useState(new Set(VENUES));
   const [selectedVenue, setSelectedVenue] = useState('aave');
 
   const { data: aaveHist,      loading: l1 } = useAaveUsdgHistory();
   const { data: okxData,       loading: l2 } = useVolumeData('okx');
   const { data: bullishTotal,  loading: l3 } = useVolumeData('bullish');
-  const { data: bullishPairs           }     = usePairVolumeData('bullish');  // non-blocking
-  const { data: supplyData             }     = useUsdgSupply();               // non-blocking
+  const { data: bullishPairs           }     = usePairVolumeData('bullish');
+  const { data: krakenData             }     = useVolumeData('kraken');
+  const { data: gateData               }     = useVolumeData('gate');
+  const { data: kucoinTotal            }     = useVolumeData('kucoin');
+  const { data: kucoinPairs            }     = usePairVolumeData('kucoin');
+  const { data: hoodOhlcv              }     = useHoodVolumeHistory();
+  const { data: supplyData             }     = useUsdgSupply();
 
   const supplyByDate    = useMemo(() => buildSupplyByDate(supplyData?.history), [supplyData]);
   const chainGdnDaily   = useMemo(() => buildChainGdnDaily(supplyData?.history), [supplyData]);
@@ -297,17 +338,21 @@ export default function GdpTab() {
     return (view4 === '12m' ? agg.slice(-12) : agg.slice(-4)).map(r => ({ ...r, displayDate: r.label }));
   }, [chainGdnDaily, view4]);
   const daily = useMemo(
-    () => computeDaily(aaveHist, okxData, bullishPairs, bullishTotal, supplyByDate),
-    [aaveHist, okxData, bullishPairs, bullishTotal, supplyByDate]
+    () => computeDaily(aaveHist, okxData, bullishPairs, bullishTotal, supplyByDate,
+      krakenData, gateData, kucoinPairs, kucoinTotal, hoodOhlcv),
+    [aaveHist, okxData, bullishPairs, bullishTotal, supplyByDate,
+     krakenData, gateData, kucoinPairs, kucoinTotal, hoodOhlcv]
   );
 
   const chart1 = useMemo(() => sliceView(daily, view1).map(r => ({ ...r, displayDate: fmtLabel(r, view1) })), [daily, view1]);
   const chart2 = useMemo(() => sliceView(daily, view2).map(r => ({ ...r, displayDate: fmtLabel(r, view2) })), [daily, view2]);
   const chart3 = useMemo(() => sliceView(daily, view3).map(r => {
     let breakdown;
-    if (selectedVenue === 'aave')    breakdown = { borrowerInterest: r.aaveBorrow, gdnRewards: r.aaveNim, tradingFees: 0,        total: r.aave };
-    else if (selectedVenue === 'okx') breakdown = { borrowerInterest: 0,            gdnRewards: 0,          tradingFees: r.okx,    total: r.okx };
-    else                              breakdown = { borrowerInterest: 0,            gdnRewards: 0,          tradingFees: r.bullish, total: r.bullish };
+    const venueTotal = r[selectedVenue] || 0;
+    if (selectedVenue === 'aave')
+      breakdown = { borrowerInterest: r.aaveBorrow, gdnRewards: r.aaveNim, tradingFees: 0, total: r.aave };
+    else
+      breakdown = { borrowerInterest: 0, gdnRewards: 0, tradingFees: venueTotal, total: venueTotal };
     return { ...breakdown, displayDate: fmtLabel(r, view3) };
   }), [daily, view3, selectedVenue]);
 
@@ -402,9 +447,13 @@ export default function GdpTab() {
                   <YAxis stroke={C_DIM} tick={{ fill: C_DIM, fontSize: 11 }} tickFormatter={fmtShort} width={62} />
                   <Tooltip content={<VenueTooltip />} cursor={{ fill: C_CURSOR }} />
                   <Legend iconType="square" wrapperStyle={{ color: C_DIM, fontSize: 12 }} />
-                  {activeVenues.has('aave')    && <Bar dataKey="aave"    stackId="v" fill={C_AAVE}    name="AAVE"    isAnimationActive={false} />}
-                  {activeVenues.has('okx')     && <Bar dataKey="okx"     stackId="v" fill={C_OKX}     name="OKX"     isAnimationActive={false} />}
-                  {activeVenues.has('bullish') && <Bar dataKey="bullish" stackId="v" fill={C_BULLISH} name="Bullish" radius={[3,3,0,0]} isAnimationActive={false} />}
+                  {activeVenues.has('aave')         && <Bar dataKey="aave"         stackId="v" fill={C_AAVE}                      name="AAVE"            isAnimationActive={false} />}
+                  {activeVenues.has('okx')          && <Bar dataKey="okx"          stackId="v" fill={C_OKX}                       name="OKX"             isAnimationActive={false} />}
+                  {activeVenues.has('bullish')      && <Bar dataKey="bullish"      stackId="v" fill={C_BULLISH}                    name="Bullish"         isAnimationActive={false} />}
+                  {activeVenues.has('kraken')       && <Bar dataKey="kraken"       stackId="v" fill={VENUE_COLORS.kraken}          name="Kraken"          isAnimationActive={false} />}
+                  {activeVenues.has('gate')         && <Bar dataKey="gate"         stackId="v" fill={VENUE_COLORS.gate}            name="Gate"            isAnimationActive={false} />}
+                  {activeVenues.has('kucoin')       && <Bar dataKey="kucoin"       stackId="v" fill={VENUE_COLORS.kucoin}          name="KuCoin"          isAnimationActive={false} />}
+                  {activeVenues.has('uniswap_hood') && <Bar dataKey="uniswap_hood" stackId="v" fill={VENUE_COLORS.uniswap_hood}    name="Hood (Uniswap)"  radius={[3,3,0,0]} isAnimationActive={false} />}
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -449,7 +498,23 @@ export default function GdpTab() {
           {/* Chart 4: GDN rewards by chain */}
           {chart4.length > 0 && (
             <ChartSection title="GDN Rewards by Chain"
-              controls={<ViewToggle value={view4} onChange={setView4} />}>
+              controls={
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                  {CHAIN_KEYS.filter(k => chart4.some(r => (r[k] || 0) > 0)).map(k => {
+                    const on = activeChains.has(k);
+                    return (
+                      <button key={k} onClick={() => toggleChain(k)}
+                        style={{ padding: '4px 10px', borderRadius: 16, fontSize: 12, cursor: 'pointer',
+                          border: `2px solid ${CHAIN_COLORS[k]}`,
+                          background: on ? CHAIN_COLORS[k] : 'transparent',
+                          color: on ? '#ffffff' : CHAIN_COLORS[k], fontWeight: 600 }}>
+                        {CHAIN_LABELS[k]}
+                      </button>
+                    );
+                  })}
+                  <ViewToggle value={view4} onChange={setView4} />
+                </div>
+              }>
               <div style={{ height: 280 }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={chart4} margin={{ top: 10, right: 16, left: 8, bottom: 5 }} barCategoryGap="18%">
@@ -465,7 +530,7 @@ export default function GdpTab() {
                       formatter={(v, name) => [fmtUSD(v), CHAIN_LABELS[name] || name]} />
                     <Legend iconType="square" wrapperStyle={{ color: C_DIM, fontSize: 12 }}
                       formatter={v => CHAIN_LABELS[v] || v} />
-                    {CHAIN_KEYS.filter(k => chart4.some(r => (r[k] || 0) > 0)).map((k, i, arr) => (
+                    {CHAIN_KEYS.filter(k => activeChains.has(k) && chart4.some(r => (r[k] || 0) > 0)).map((k, i, arr) => (
                       <Bar key={k} dataKey={k} stackId="c" fill={CHAIN_COLORS[k]}
                         radius={i === arr.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]}
                         isAnimationActive={false} />
