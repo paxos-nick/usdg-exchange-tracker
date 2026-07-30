@@ -422,7 +422,7 @@ export default function GdpTab() {
           </ChartSection>
 
           {/* ── CHART 2: by venue, toggleable ── */}
-          <ChartSection title="GDP by Venue"
+          <ChartSection title="Trading Fees + Borrow Interest by Venue"
             controls={
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                 {VENUES.map(v => {
@@ -461,7 +461,7 @@ export default function GdpTab() {
           </ChartSection>
 
           {/* ── CHART 3: per-partner breakdown ── */}
-          <ChartSection title="Partner Breakdown"
+          <ChartSection title="Trading Fees + Borrow Interest by Partner"
             controls={
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', gap: 3, background: '#f0f2f5', borderRadius: 8,
