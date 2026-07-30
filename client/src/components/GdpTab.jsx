@@ -498,6 +498,8 @@ export default function GdpTab() {
                       <LabelList content={(props) => {
                         const { x, y, width, index } = props;
                         const row = chart1[index];
+                        // Skip current quarter — QTD vs full prior quarter is misleading
+                        if (row?.isCurrentQuarter) return null;
                         if (!row?.qoqGrowth && row?.qoqGrowth !== 0) return null;
                         const pct = row.qoqGrowth;
                         const color = pct >= 0 ? '#29a784' : '#ef4444';
