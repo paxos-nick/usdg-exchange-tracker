@@ -5,67 +5,67 @@ import {
 } from 'recharts';
 import { useAaveUsdgHistory, useVolumeData, usePairVolumeData } from '../hooks/useVolumeData';
 
-// ── Warm gold/amber palette — intentionally distinct from the rest of the dashboard ──
-const GDP_BG        = 'linear-gradient(135deg, #1c1508 0%, #201a08 100%)';
-const GDP_BORDER    = '#3d2e0a';
-const GDP_CARD_BG   = '#241c09';
+// ── Paxos brand palette ───────────────────────────────────────────────────────────
+const GDP_BG      = '#f6f8fb';           // Paxos light background
+const GDP_BORDER  = '#e2e2e4';
+const GDP_CARD_BG = '#ffffff';           // white card backgrounds
+const GDP_BTN_ACT = '#19282f';           // Paxos dark navy
 
-const C_AAVE_BORROW = '#f59e0b'; // amber-500
-const C_AAVE_NIM    = '#b45309'; // amber-700
-const C_OKX         = '#ea580c'; // orange-600
-const C_BULLISH_STB = '#e11d48'; // rose-600
-const C_BULLISH_RSK = '#9f1239'; // rose-900
-const C_TOTAL_LINE  = '#fbbf24'; // amber-400
-const C_MUTED       = '#92786b';
-const C_TEXT        = '#f5e6c8';
-const C_TEXT_DIM    = '#9d8a72';
-const C_GRID        = '#2e2208';
+const C_BORROW   = '#c7e36c'; // Paxos lime green — borrower interest
+const C_TRADING  = '#0094d8'; // Paxos blue — trading fees
+const C_REWARDS  = '#314012'; // Paxos dark green — GDN rewards
+const C_AAVE     = '#c7e36c'; // lime green
+const C_OKX      = '#0094d8'; // blue
+const C_BULLISH  = '#43494e'; // Paxos dark gray
+const C_TOTAL    = '#19282f'; // Paxos dark navy
+const C_TEXT     = '#19282f'; // dark text on white
+const C_DIM      = '#828385'; // Paxos mid gray
+const C_GRID     = '#e8ecf0';
+const C_CURSOR   = 'rgba(25,40,47,0.04)';
 
-const NIM_APY      = 0.031;
-const STABLE_FEE   = 0.0002; // 2 bps
-const RISK_FEE     = 0.0007; // 7 bps
+const NIM_APY    = 0.031;
+const STABLE_FEE = 0.0002;
+const RISK_FEE   = 0.0007;
+
+const VENUES = ['aave', 'okx', 'bullish'];
+const VENUE_LABELS = { aave: 'AAVE', okx: 'OKX', bullish: 'Bullish' };
+const VENUE_COLORS = { aave: C_AAVE, okx: C_OKX, bullish: C_BULLISH };
 
 // ── Data computation ──────────────────────────────────────────────────────────────
 
-const GDP_KEYS = ['aaveBorrow', 'aaveNim', 'okxTrading', 'bullishStable', 'bullishRisk'];
-
-function emptyRow(date) {
-  return { date, aaveBorrow: 0, aaveNim: 0, okxTrading: 0, bullishStable: 0, bullishRisk: 0 };
-}
-
 function computeDaily(aaveHist, okxData, bullishPairs) {
   const byDate = {};
+  const add = (date, patch) => {
+    byDate[date] = byDate[date] || { date, aaveBorrow: 0, aaveNim: 0, okxTrading: 0, bullishStable: 0, bullishRisk: 0 };
+    Object.assign(byDate[date], patch);
+  };
 
-  // AAVE: borrow interest + NIM on idle supply
   for (const row of (aaveHist?.history || [])) {
     const idle = Math.max((row.total_supply || 0) - (row.total_debt || 0), 0);
-    byDate[row.date] = {
-      ...emptyRow(row.date),
-      aaveBorrow: row.daily_interest || 0,
-      aaveNim:    idle * NIM_APY / 365,
-    };
+    add(row.date, { aaveBorrow: row.daily_interest || 0, aaveNim: idle * NIM_APY / 365 });
   }
+  for (const row of (okxData?.dailyVolume || []))
+    add(row.date, { okxTrading: (row.volume || 0) * STABLE_FEE });
 
-  // OKX: single stable/stable pair USDG-USDT
-  for (const row of (okxData?.dailyVolume || [])) {
-    if (!byDate[row.date]) byDate[row.date] = emptyRow(row.date);
-    byDate[row.date].okxTrading = (row.volume || 0) * STABLE_FEE;
-  }
-
-  // Bullish: USDGUSDC (stable 2bps) + BTCUSDG (risk 7bps)
   const bpv = bullishPairs?.volumeByPair || {};
-  for (const row of (bpv['USDGUSDC'] || [])) {
-    if (!byDate[row.date]) byDate[row.date] = emptyRow(row.date);
-    byDate[row.date].bullishStable = (row.volume || 0) * STABLE_FEE;
-  }
-  for (const row of (bpv['BTCUSDG'] || [])) {
-    if (!byDate[row.date]) byDate[row.date] = emptyRow(row.date);
-    byDate[row.date].bullishRisk = (row.volume || 0) * RISK_FEE;
-  }
+  for (const row of (bpv['USDGUSDC'] || []))
+    add(row.date, { bullishStable: (row.volume || 0) * STABLE_FEE });
+  for (const row of (bpv['BTCUSDG'] || []))
+    add(row.date, { bullishRisk: (row.volume || 0) * RISK_FEE });
 
-  return Object.values(byDate)
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .map(r => ({ ...r, total: GDP_KEYS.reduce((s, k) => s + r[k], 0) }));
+  return Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date)).map(r => {
+    const borrowerInterest = r.aaveBorrow;
+    const tradingFees      = r.okxTrading + r.bullishStable + r.bullishRisk;
+    const gdnRewards       = r.aaveNim;
+    return {
+      ...r,
+      borrowerInterest, tradingFees, gdnRewards,
+      aave: r.aaveBorrow + r.aaveNim,
+      okx:  r.okxTrading,
+      bullish: r.bullishStable + r.bullishRisk,
+      total: borrowerInterest + tradingFees + gdnRewards,
+    };
+  });
 }
 
 function parseDate(d) {
@@ -81,28 +81,28 @@ function aggregateBy(daily, unit) {
     if (unit === 'month') {
       key = row.date.slice(0, 7);
       label = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-      sort = key;
+      sort  = key;
     } else {
-      const y = d.getFullYear();
-      const q = Math.ceil((d.getMonth() + 1) / 3);
-      key = `${y}-Q${q}`;
-      label = `Q${q} '${String(y).slice(2)}`;
-      sort = `${y}-0${q}`;
+      const y = d.getFullYear(), q = Math.ceil((d.getMonth() + 1) / 3);
+      key = `${y}-Q${q}`; label = `Q${q} '${String(y).slice(2)}`; sort = `${y}-0${q}`;
     }
-    if (!buckets[key]) {
-      buckets[key] = { period: key, label, sort, ...emptyRow(key), total: 0 };
-    }
-    for (const k of [...GDP_KEYS, 'total']) {
+    if (!buckets[key]) buckets[key] = { period: key, label, sort,
+      borrowerInterest: 0, tradingFees: 0, gdnRewards: 0,
+      aave: 0, okx: 0, bullish: 0, total: 0 };
+    for (const k of ['borrowerInterest','tradingFees','gdnRewards','aave','okx','bullish','total'])
       buckets[key][k] += row[k] || 0;
-    }
   }
   return Object.values(buckets).sort((a, b) => a.sort.localeCompare(b.sort));
 }
 
-// ── Formatting ────────────────────────────────────────────────────────────────────
+function sliceView(daily, view) {
+  if (view === '30d') return daily.slice(-30);
+  const agg = aggregateBy(daily, view === '12m' ? 'month' : 'quarter');
+  return view === '12m' ? agg.slice(-12) : agg.slice(-4);
+}
 
 function fmtUSD(v) {
-  if (v == null || isNaN(v)) return '—';
+  if (!v && v !== 0) return '—';
   if (v >= 1e6) return `$${(v / 1e6).toFixed(2)}M`;
   if (v >= 1e3) return `$${(v / 1e3).toFixed(1)}K`;
   return `$${v.toFixed(0)}`;
@@ -110,193 +110,266 @@ function fmtUSD(v) {
 function fmtShort(v) {
   if (v >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
   if (v >= 1e3) return `$${(v / 1e3).toFixed(0)}K`;
-  return `$${v?.toFixed(0) || 0}`;
+  return `$${(v || 0).toFixed(0)}`;
+}
+function fmtLabel(row, view) {
+  if (!row.date) return row.label || '';
+  const d = parseDate(row.date);
+  return view === '30d'
+    ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
 }
 
-function fmtDate(d, view) {
-  const dt = parseDate(d);
-  if (view === '30d') return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  return dt.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-}
+// ── Shared sub-components ─────────────────────────────────────────────────────────
 
-// ── Stat tile ─────────────────────────────────────────────────────────────────────
-
-function GdpTile({ label, value, sub, color }) {
+function Tile({ label, value, sub, color }) {
   return (
     <div style={{ background: GDP_CARD_BG, border: `1px solid ${GDP_BORDER}`, borderRadius: 10,
-      padding: '14px 18px', minWidth: 140 }}>
-      <div style={{ color: C_TEXT_DIM, fontSize: 12, marginBottom: 4 }}>{label}</div>
-      <div style={{ color: color || C_TOTAL_LINE, fontSize: 22, fontWeight: 700 }}>{fmtUSD(value)}</div>
-      {sub && <div style={{ color: C_TEXT_DIM, fontSize: 11, marginTop: 2 }}>{sub}</div>}
+      padding: '14px 18px', flex: 1, minWidth: 140 }}>
+      <div style={{ color: C_DIM, fontSize: 12, marginBottom: 4 }}>{label}</div>
+      <div style={{ color: color || C_TOTAL, fontSize: 22, fontWeight: 700 }}>{fmtUSD(value)}</div>
+      {sub && <div style={{ color: C_DIM, fontSize: 11, marginTop: 2 }}>{sub}</div>}
     </div>
   );
 }
 
-// ── Tooltip ───────────────────────────────────────────────────────────────────────
-
-function GdpTooltip({ active, payload, label }) {
-  if (!active || !payload?.length) return null;
-  const r = payload[0].payload;
-  const rows = [
-    { label: 'AAVE borrow interest', key: 'aaveBorrow', color: C_AAVE_BORROW },
-    { label: 'AAVE NIM (idle supply)', key: 'aaveNim',   color: C_AAVE_NIM    },
-    { label: 'OKX trading (2bps)',    key: 'okxTrading', color: C_OKX         },
-    { label: 'Bullish stable (2bps)', key: 'bullishStable', color: C_BULLISH_STB },
-    { label: 'Bullish risk (7bps)',   key: 'bullishRisk',   color: C_BULLISH_RSK },
-  ].filter(row => r[row.key] > 0);
-
+function ViewToggle({ value, onChange }) {
   return (
-    <div style={{ background: '#1c1508', border: `1px solid ${GDP_BORDER}`, borderRadius: 8,
-      padding: '10px 14px', color: C_TEXT, minWidth: 220 }}>
-      <div style={{ color: C_TEXT_DIM, marginBottom: 8, fontSize: 12 }}>{label}</div>
-      {rows.map(row => (
-        <div key={row.key} style={{ display: 'flex', justifyContent: 'space-between',
-          gap: 16, fontSize: 12, padding: '1px 0' }}>
-          <span style={{ color: row.color }}>{row.label}</span>
-          <span style={{ color: C_TEXT }}>{fmtUSD(r[row.key])}</span>
-        </div>
+    <div style={{ display: 'flex', gap: 3, background: '#f0f2f5', borderRadius: 8,
+      padding: 3, border: `1px solid ${GDP_BORDER}` }}>
+      {[['30d','30 Days'],['12m','12 Mo'],['4q','4 Qtrs']].map(([id, lbl]) => (
+        <button key={id} onClick={() => onChange(id)}
+          style={{ padding: '4px 14px', borderRadius: 5, fontSize: 12, cursor: 'pointer',
+            border: 'none', fontWeight: value === id ? 600 : 400,
+            background: value === id ? GDP_BTN_ACT : 'transparent',
+            color: value === id ? '#ffffff' : C_DIM }}>
+          {lbl}
+        </button>
       ))}
-      <div style={{ borderTop: `1px solid ${GDP_BORDER}`, marginTop: 6, paddingTop: 6,
-        display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: 12 }}>
-        <span style={{ color: C_TOTAL_LINE }}>Total GDP</span>
-        <span style={{ color: C_TOTAL_LINE }}>{fmtUSD(r.total)}</span>
-      </div>
     </div>
   );
 }
+
+function ChartSection({ title, children, controls }) {
+  return (
+    <section style={{ marginTop: 16, background: GDP_CARD_BG, border: `1px solid ${GDP_BORDER}`,
+      borderRadius: 12, padding: '16px 20px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+        <h3 style={{ margin: 0, color: C_TEXT, fontSize: 15, fontWeight: 600 }}>{title}</h3>
+        {controls}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function makeTooltip(rows) {
+  return function GdpTooltip({ active, payload, label }) {
+    if (!active || !payload?.length) return null;
+    const r = payload[0].payload;
+    const items = rows.filter(row => (r[row.key] || 0) > 0);
+    return (
+      <div style={{ background: '#ffffff', border: `1px solid ${GDP_BORDER}`, borderRadius: 8,
+        boxShadow: '0 4px 12px rgba(25,40,47,0.12)', padding: '10px 14px', color: C_TEXT, minWidth: 210 }}>
+        <div style={{ color: C_DIM, fontSize: 12, marginBottom: 7 }}>{label}</div>
+        {items.map(row => (
+          <div key={row.key} style={{ display: 'flex', justifyContent: 'space-between',
+            gap: 14, fontSize: 12, padding: '1px 0' }}>
+            <span style={{ color: row.color }}>{row.label}</span>
+            <span style={{ color: C_TEXT }}>{fmtUSD(r[row.key])}</span>
+          </div>
+        ))}
+        <div style={{ borderTop: `1px solid ${GDP_BORDER}`, marginTop: 6, paddingTop: 5,
+          display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: 12 }}>
+          <span style={{ color: C_TOTAL }}>Total</span>
+          <span style={{ color: C_TOTAL }}>{fmtUSD(r.total)}</span>
+        </div>
+      </div>
+    );
+  };
+}
+
+const CategoryTooltip = makeTooltip([
+  { key: 'borrowerInterest', label: 'Borrower interest', color: C_BORROW },
+  { key: 'tradingFees',      label: 'Trading fees',      color: C_TRADING },
+  { key: 'gdnRewards',       label: 'GDN rewards',       color: C_REWARDS },
+]);
+
+const VenueTooltip = makeTooltip([
+  { key: 'aave',    label: 'AAVE',    color: C_AAVE },
+  { key: 'okx',     label: 'OKX',     color: C_OKX },
+  { key: 'bullish', label: 'Bullish', color: C_BULLISH },
+]);
 
 // ── Main component ────────────────────────────────────────────────────────────────
 
-const VIEWS = [
-  { id: '30d', label: '30 Days' },
-  { id: '12m', label: '12 Months' },
-  { id: '4q',  label: '4 Quarters' },
-];
-
 export default function GdpTab() {
-  const [view, setView] = useState('30d');
+  const [view1, setView1]           = useState('30d');
+  const [view2, setView2]           = useState('30d');
+  const [view3, setView3]           = useState('30d');
+  const [activeVenues, setActiveVenues] = useState(new Set(VENUES));
+  const [selectedVenue, setSelectedVenue] = useState('aave');
 
-  const { data: aaveHist,     loading: aaveLoading }    = useAaveUsdgHistory();
-  const { data: okxData,      loading: okxLoading }     = useVolumeData('okx');
-  const { data: bullishPairs, loading: bullishLoading } = usePairVolumeData('bullish');
+  const { data: aaveHist,     loading: l1 } = useAaveUsdgHistory();
+  const { data: okxData,      loading: l2 } = useVolumeData('okx');
+  const { data: bullishPairs, loading: l3 } = usePairVolumeData('bullish');
 
-  const loading = aaveLoading || okxLoading || bullishLoading;
+  const daily = useMemo(() => computeDaily(aaveHist, okxData, bullishPairs), [aaveHist, okxData, bullishPairs]);
 
-  const daily = useMemo(
-    () => computeDaily(aaveHist, okxData, bullishPairs),
-    [aaveHist, okxData, bullishPairs]
-  );
+  const chart1 = useMemo(() => sliceView(daily, view1).map(r => ({ ...r, displayDate: fmtLabel(r, view1) })), [daily, view1]);
+  const chart2 = useMemo(() => sliceView(daily, view2).map(r => ({ ...r, displayDate: fmtLabel(r, view2) })), [daily, view2]);
+  const chart3 = useMemo(() => sliceView(daily, view3).map(r => {
+    let breakdown;
+    if (selectedVenue === 'aave')    breakdown = { borrowerInterest: r.aaveBorrow, gdnRewards: r.aaveNim, tradingFees: 0,        total: r.aave };
+    else if (selectedVenue === 'okx') breakdown = { borrowerInterest: 0,            gdnRewards: 0,          tradingFees: r.okx,    total: r.okx };
+    else                              breakdown = { borrowerInterest: 0,            gdnRewards: 0,          tradingFees: r.bullish, total: r.bullish };
+    return { ...breakdown, displayDate: fmtLabel(r, view3) };
+  }), [daily, view3, selectedVenue]);
 
-  const chartData = useMemo(() => {
-    if (!daily.length) return [];
-    if (view === '30d') {
-      return daily.slice(-30).map(r => ({ ...r, displayDate: fmtDate(r.date, '30d') }));
-    }
-    const periods = view === '12m'
-      ? aggregateBy(daily, 'month').slice(-12)
-      : aggregateBy(daily, 'quarter').slice(-4);
-    return periods.map(r => ({ ...r, displayDate: r.label }));
-  }, [daily, view]);
+  // Totals for the first chart's window
+  const totals = useMemo(() => chart1.reduce(
+    (acc, r) => { acc.borrowerInterest += r.borrowerInterest || 0; acc.tradingFees += r.tradingFees || 0;
+      acc.gdnRewards += r.gdnRewards || 0; acc.total += r.total || 0; return acc; },
+    { borrowerInterest: 0, tradingFees: 0, gdnRewards: 0, total: 0 }
+  ), [chart1]);
 
-  // Summary totals for the selected window
-  const windowTotal = useMemo(() => {
-    const zero = { total: 0, aaveBorrow: 0, aaveNim: 0, okxTrading: 0, bullishStable: 0, bullishRisk: 0 };
-    return chartData.reduce((acc, r) => {
-      for (const k of [...GDP_KEYS, 'total']) acc[k] += r[k] || 0;
-      return acc;
-    }, zero);
-  }, [chartData]);
+  const toggleVenue = v => setActiveVenues(prev => {
+    const next = new Set(prev);
+    next.has(v) ? next.delete(v) : next.add(v);
+    return next;
+  });
 
-  const periodLabel = view === '30d' ? 'last 30 days' : view === '12m' ? 'last 12 months' : 'last 4 quarters';
+  const loading = l1 || l2 || l3;
+
+  const axisProps = {
+    stroke: C_DIM, tick: { fill: C_DIM, fontSize: 11 }, tickMargin: 8, interval: 'preserveStartEnd',
+  };
 
   return (
-    <div style={{ background: GDP_BG, borderRadius: 16, padding: 24,
-      border: `1px solid ${GDP_BORDER}`, fontFamily: 'inherit' }}>
+    <div style={{ background: GDP_BG, borderRadius: 16, padding: 24, border: `1px solid ${GDP_BORDER}`, minHeight: 400 }}>
 
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
-        <h2 style={{ color: C_TOTAL_LINE, margin: 0, fontSize: 22, fontWeight: 700 }}>
-          USDG GDP
-        </h2>
-        <p style={{ color: C_TEXT_DIM, margin: '4px 0 0', fontSize: 13 }}>
-          Economic value generated by USDG across venues — borrow interest, NIM on idle supply, and estimated trading fees.
+        <h2 style={{ color: C_TOTAL, margin: 0, fontSize: 22, fontWeight: 700 }}>USDG GDP</h2>
+        <p style={{ color: C_DIM, margin: '4px 0 0', fontSize: 13 }}>
+          Economic value generated by USDG across venues — borrower interest, trading fees, and GDN rewards on idle supply.
         </p>
       </div>
 
-      {/* View toggle */}
-      <div style={{ display: 'flex', gap: 4, background: '#1a1208', borderRadius: 8,
-        padding: 4, width: 'fit-content', marginBottom: 20, border: `1px solid ${GDP_BORDER}` }}>
-        {VIEWS.map(v => (
-          <button key={v.id} onClick={() => setView(v.id)}
-            style={{ padding: '5px 16px', borderRadius: 6, fontSize: 13, cursor: 'pointer',
-              border: 'none', fontWeight: view === v.id ? 600 : 400,
-              background: view === v.id ? '#3d2a06' : 'transparent',
-              color:      view === v.id ? C_TOTAL_LINE : C_TEXT_DIM }}>
-            {v.label}
-          </button>
-        ))}
-      </div>
-
-      {loading ? (
-        <div style={{ color: C_TEXT_DIM, padding: 40, textAlign: 'center' }}>Loading GDP data…</div>
-      ) : (
+      {loading ? <div style={{ color: C_DIM, padding: 40, textAlign: 'center' }}>Loading…</div> : (
         <>
-          {/* Stat tiles */}
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20 }}>
-            <GdpTile label={`Total GDP (${periodLabel})`} value={windowTotal.total} color={C_TOTAL_LINE} />
-            <GdpTile label="AAVE (borrow + NIM)" value={windowTotal.aaveBorrow + windowTotal.aaveNim}
-              sub={`borrow ${fmtUSD(windowTotal.aaveBorrow)} · NIM ${fmtUSD(windowTotal.aaveNim)}`}
-              color={C_AAVE_BORROW} />
-            <GdpTile label="OKX (USDG/USDT, 2bps)" value={windowTotal.okxTrading} color={C_OKX} />
-            <GdpTile label="Bullish (stable + risk)"
-              value={windowTotal.bullishStable + windowTotal.bullishRisk}
-              sub={`stable ${fmtUSD(windowTotal.bullishStable)} · risk ${fmtUSD(windowTotal.bullishRisk)}`}
-              color={C_BULLISH_STB} />
+          {/* ── STAT TILES ── */}
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 24 }}>
+            <Tile label="Total GDP" value={totals.total} color={C_TOTAL}
+              sub={view1 === '30d' ? 'last 30 days' : view1 === '12m' ? 'last 12 months' : 'last 4 quarters'} />
+            <Tile label="Borrower Interest Paid" value={totals.borrowerInterest} color={C_BORROW}
+              sub="what USDG borrowers pay" />
+            <Tile label="Trading Fees Paid" value={totals.tradingFees} color={C_TRADING}
+              sub="est. from CEX trading volumes" />
+            <Tile label="GDN Rewards Paid" value={totals.gdnRewards} color={C_REWARDS}
+              sub={`idle USDG × ${(NIM_APY * 100).toFixed(1)}% APY`} />
           </div>
 
-          {/* Chart */}
-          <div style={{ height: 340 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 20, right: 20, left: 10, bottom: 5 }} barCategoryGap="18%">
-                <CartesianGrid strokeDasharray="3 3" stroke={C_GRID} />
-                <XAxis dataKey="displayDate" stroke={C_MUTED} tick={{ fill: C_TEXT_DIM, fontSize: 11 }}
-                  tickMargin={8} interval="preserveStartEnd" />
-                <YAxis stroke={C_MUTED} tick={{ fill: C_TEXT_DIM, fontSize: 11 }}
-                  tickFormatter={fmtShort} width={65} />
-                <Tooltip content={<GdpTooltip />} cursor={{ fill: 'rgba(251,191,36,0.05)' }} />
-                <Legend iconType="square" wrapperStyle={{ color: C_TEXT_DIM, fontSize: 12 }}
-                  formatter={v => ({
-                    aaveBorrow:    'AAVE borrow',
-                    aaveNim:       'AAVE NIM',
-                    okxTrading:    'OKX (2bps)',
-                    bullishStable: 'Bullish stable (2bps)',
-                    bullishRisk:   'Bullish risk (7bps)',
-                  }[v] || v)} />
+          {/* ── CHART 1: by category ── */}
+          <ChartSection title="GDP by Category"
+            controls={<ViewToggle value={view1} onChange={setView1} />}>
+            <div style={{ height: 300 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chart1} margin={{ top: 10, right: 16, left: 8, bottom: 5 }} barCategoryGap="18%">
+                  <CartesianGrid strokeDasharray="3 3" stroke={C_GRID} />
+                  <XAxis dataKey="displayDate" {...axisProps} />
+                  <YAxis stroke={C_DIM} tick={{ fill: C_DIM, fontSize: 11 }} tickFormatter={fmtShort} width={62} />
+                  <Tooltip content={<CategoryTooltip />} cursor={{ fill: C_CURSOR }} />
+                  <Legend iconType="square" wrapperStyle={{ color: C_DIM, fontSize: 12 }}
+                    formatter={v => ({ borrowerInterest: 'Borrower interest', tradingFees: 'Trading fees', gdnRewards: 'GDN rewards' }[v] || v)} />
+                  <Bar dataKey="borrowerInterest" stackId="a" fill={C_BORROW}  isAnimationActive={false} />
+                  <Bar dataKey="tradingFees"      stackId="a" fill={C_TRADING} isAnimationActive={false} />
+                  <Bar dataKey="gdnRewards"       stackId="a" fill={C_REWARDS} radius={[3,3,0,0]} isAnimationActive={false} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </ChartSection>
 
-                <Bar dataKey="aaveBorrow"    stackId="gdp" fill={C_AAVE_BORROW} isAnimationActive={false} />
-                <Bar dataKey="aaveNim"       stackId="gdp" fill={C_AAVE_NIM}    isAnimationActive={false} />
-                <Bar dataKey="okxTrading"    stackId="gdp" fill={C_OKX}         isAnimationActive={false} />
-                <Bar dataKey="bullishStable" stackId="gdp" fill={C_BULLISH_STB} isAnimationActive={false} />
-                <Bar dataKey="bullishRisk"   stackId="gdp" fill={C_BULLISH_RSK}
-                  radius={[3, 3, 0, 0]} isAnimationActive={false}>
-                  {view === '30d' && (
-                    <LabelList dataKey="total" position="top"
-                      formatter={v => v > 0 ? fmtShort(v) : ''}
-                      style={{ fill: C_TEXT_DIM, fontSize: 9 }} />
-                  )}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          {/* ── CHART 2: by venue, toggleable ── */}
+          <ChartSection title="GDP by Venue"
+            controls={
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                {VENUES.map(v => {
+                  const on = activeVenues.has(v);
+                  return (
+                    <button key={v} onClick={() => toggleVenue(v)}
+                      style={{ padding: '4px 12px', borderRadius: 16, fontSize: 12, cursor: 'pointer',
+                        border: `2px solid ${VENUE_COLORS[v]}`,
+                        background: on ? VENUE_COLORS[v] : 'transparent',
+                        color: on ? '#1c1508' : VENUE_COLORS[v], fontWeight: 600 }}>
+                      {VENUE_LABELS[v]}
+                    </button>
+                  );
+                })}
+                <ViewToggle value={view2} onChange={setView2} />
+              </div>
+            }>
+            <div style={{ height: 280 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chart2} margin={{ top: 10, right: 16, left: 8, bottom: 5 }} barCategoryGap="18%">
+                  <CartesianGrid strokeDasharray="3 3" stroke={C_GRID} />
+                  <XAxis dataKey="displayDate" {...axisProps} />
+                  <YAxis stroke={C_DIM} tick={{ fill: C_DIM, fontSize: 11 }} tickFormatter={fmtShort} width={62} />
+                  <Tooltip content={<VenueTooltip />} cursor={{ fill: C_CURSOR }} />
+                  <Legend iconType="square" wrapperStyle={{ color: C_DIM, fontSize: 12 }} />
+                  {activeVenues.has('aave')    && <Bar dataKey="aave"    stackId="v" fill={C_AAVE}    name="AAVE"    isAnimationActive={false} />}
+                  {activeVenues.has('okx')     && <Bar dataKey="okx"     stackId="v" fill={C_OKX}     name="OKX"     isAnimationActive={false} />}
+                  {activeVenues.has('bullish') && <Bar dataKey="bullish" stackId="v" fill={C_BULLISH} name="Bullish" radius={[3,3,0,0]} isAnimationActive={false} />}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </ChartSection>
 
-          {/* Methodology footnote */}
-          <div style={{ marginTop: 12, padding: '10px 14px', background: GDP_CARD_BG,
-            border: `1px solid ${GDP_BORDER}`, borderRadius: 8, fontSize: 12, color: C_TEXT_DIM,
-            lineHeight: 1.6 }}>
+          {/* ── CHART 3: per-partner breakdown ── */}
+          <ChartSection title="Partner Breakdown"
+            controls={
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: 3, background: '#f0f2f5', borderRadius: 8,
+                  padding: 3, border: `1px solid ${GDP_BORDER}` }}>
+                  {VENUES.map(v => (
+                    <button key={v} onClick={() => setSelectedVenue(v)}
+                      style={{ padding: '4px 14px', borderRadius: 5, fontSize: 12, cursor: 'pointer',
+                        border: 'none', fontWeight: selectedVenue === v ? 600 : 400,
+                        background: selectedVenue === v ? GDP_BTN_ACT : 'transparent',
+                        color: selectedVenue === v ? VENUE_COLORS[v] : C_DIM }}>
+                      {VENUE_LABELS[v]}
+                    </button>
+                  ))}
+                </div>
+                <ViewToggle value={view3} onChange={setView3} />
+              </div>
+            }>
+            <div style={{ height: 260 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chart3} margin={{ top: 10, right: 16, left: 8, bottom: 5 }} barCategoryGap="18%">
+                  <CartesianGrid strokeDasharray="3 3" stroke={C_GRID} />
+                  <XAxis dataKey="displayDate" {...axisProps} />
+                  <YAxis stroke={C_DIM} tick={{ fill: C_DIM, fontSize: 11 }} tickFormatter={fmtShort} width={62} />
+                  <Tooltip content={<CategoryTooltip />} cursor={{ fill: C_CURSOR }} />
+                  <Legend iconType="square" wrapperStyle={{ color: C_DIM, fontSize: 12 }}
+                    formatter={v => ({ borrowerInterest: 'Borrower interest', tradingFees: 'Trading fees', gdnRewards: 'GDN rewards' }[v] || v)} />
+                  <Bar dataKey="borrowerInterest" stackId="p" fill={C_BORROW}  isAnimationActive={false} />
+                  <Bar dataKey="tradingFees"      stackId="p" fill={C_TRADING} isAnimationActive={false} />
+                  <Bar dataKey="gdnRewards"       stackId="p" fill={C_REWARDS} radius={[3,3,0,0]} isAnimationActive={false} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </ChartSection>
+
+          {/* Methodology */}
+          <div style={{ marginTop: 20, padding: '10px 14px', background: GDP_CARD_BG,
+            border: `1px solid ${GDP_BORDER}`, borderRadius: 8, fontSize: 12, color: C_DIM, lineHeight: 1.6 }}>
             <strong style={{ color: C_TEXT }}>Methodology: </strong>
-            AAVE = daily borrow interest + NIM on idle USDG (supply − borrow) at {(NIM_APY * 100).toFixed(1)}% APY.
-            OKX = USDG/USDT volume × 2bps. Bullish stable (USDGUSDC) × 2bps, risk (BTCUSDG) × 7bps.
-            Prototype — additional venues, custody rewards, and market-making GDP TBD.
+            Borrower interest = AAVE daily borrow interest.
+            GDN rewards = idle USDG (supply − borrow) × {(NIM_APY * 100).toFixed(1)}% APY.
+            Trading fees: OKX USDG/USDT × 2bps; Bullish USDGUSDC × 2bps, BTCUSDG × 7bps.
+            Prototype — additional venues and custody rewards TBD.
           </div>
         </>
       )}
