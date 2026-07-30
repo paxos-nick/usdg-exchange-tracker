@@ -247,12 +247,14 @@ function fmtLabel(row, view) {
 
 // ── Shared sub-components ─────────────────────────────────────────────────────────
 
-function Tile({ label, value, sub, color }) {
+function Tile({ label, value, display, sub, color }) {
   return (
     <div style={{ background: GDP_CARD_BG, border: `1px solid ${GDP_BORDER}`, borderRadius: 10,
       padding: '14px 18px', flex: 1, minWidth: 140 }}>
       <div style={{ color: C_DIM, fontSize: 12, marginBottom: 4 }}>{label}</div>
-      <div style={{ color: color || C_TOTAL, fontSize: 22, fontWeight: 700 }}>{fmtUSD(value)}</div>
+      <div style={{ color: color || C_TOTAL, fontSize: 22, fontWeight: 700 }}>
+        {display ?? fmtUSD(value)}
+      </div>
       {sub && <div style={{ color: C_DIM, fontSize: 11, marginTop: 2 }}>{sub}</div>}
     </div>
   );
@@ -457,7 +459,7 @@ export default function GdpTab() {
                 <Tile label="Estimated full quarter" value={eoq} color={C_TRADING}
                   sub={`QTD extrapolated to end of quarter`} />
                 <Tile label="Est. QoQ growth"
-                  value={estQoQ != null ? (estQoQ >= 0 ? '+' : '') + estQoQ.toFixed(1) + '%' : '—'}
+                  display={estQoQ != null ? (estQoQ >= 0 ? '+' : '') + estQoQ.toFixed(1) + '%' : '—'}
                   color={estQoQ != null ? (estQoQ >= 0 ? '#29a784' : '#ef4444') : C_DIM}
                   sub={actQoQ != null ? `vs prior quarter · actual QTD: ${actQoQ >= 0 ? '+' : ''}${actQoQ.toFixed(1)}%` : 'vs prior quarter'} />
               </div>
