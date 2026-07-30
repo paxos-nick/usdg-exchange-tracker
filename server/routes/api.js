@@ -525,6 +525,25 @@ router.get('/binance/paxg/depth-history', async (req, res) => {
   }
 });
 
+// GET /api/usdg/supply - Live circulating supply per chain + historical snapshots
+router.get('/usdg/supply', async (req, res) => {
+  try {
+    const { getAllChainSupply } = require('../services/usdgSupply');
+    const [live, historical] = await Promise.all([
+      getAllChainSupply(),
+      dbPool.query(
+        `SELECT snapshot_date::text AS date, chain, circulating::float, total_supply::float, supply_controlled::float
+         FROM usdg_supply_history
+         ORDER BY snapshot_date ASC, chain ASC`
+      )
+    ]);
+    res.json({ live, history: historical.rows });
+  } catch (err) {
+    console.error('Error fetching USDG supply:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/aave/usdg/history - Historical daily USDG Aave v4 borrow + incentive data
 router.get('/aave/usdg/history', async (req, res) => {
   try {

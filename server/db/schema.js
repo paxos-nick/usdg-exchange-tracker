@@ -155,6 +155,18 @@ const SCHEMA_SQL = `
 
   ALTER TABLE aave_usdg_history
     ADD COLUMN IF NOT EXISTS merkl_hub_tvl NUMERIC(24,6);
+
+  CREATE TABLE IF NOT EXISTS usdg_supply_history (
+    id                SERIAL PRIMARY KEY,
+    snapshot_date     DATE        NOT NULL,
+    chain             VARCHAR(50) NOT NULL,
+    circulating       NUMERIC(24, 6),
+    total_supply      NUMERIC(24, 6),
+    supply_controlled NUMERIC(24, 6),
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(snapshot_date, chain)
+  );
+  CREATE INDEX IF NOT EXISTS idx_usdg_supply_date ON usdg_supply_history (snapshot_date DESC);
 `;
 
 async function setupDatabase() {

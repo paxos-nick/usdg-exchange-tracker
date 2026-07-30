@@ -10,6 +10,7 @@ const aaveV4Service = require('../services/aaveV4');
 const merklService  = require('../services/merkl');
 const { fetchUsdgDepth } = require('../services/depthFetcher');
 const binanceService = require('../services/binance');
+const { getAllChainSupply } = require('../services/usdgSupply');
 const { calculateDepthMetrics } = require('../utils/depthCalculator');
 
 async function runSnapshot() {
@@ -169,6 +170,28 @@ async function runSnapshot() {
         console.log(`[Snapshot] Aave v4 USDG logged: $${(aaveData.totalVariableDebt / 1e6).toFixed(2)}M @ ${aaveData.variableBorrowApy.toFixed(2)}% APY, Hub APR: ${merklHubApr?.toFixed(2) || 'n/a'}%, Hub TVL: $${(merklHubTvl / 1e6)?.toFixed(2) || 'n/a'}M`);
       } catch (err) {
         console.error('[Snapshot] Failed to log Aave v4 USDG:', err.message);
+      }
+    }
+
+    // Daily: USDG circulating supply by chain
+    if (isDailyRun) {
+      try {
+        const chainSupplies = await getAllChainSupply();
+        for (const s of chainSupplies) {
+          if (s.circulating == null) continue;
+          await pool.query(
+            `INSERT INTO usdg_supply_history (snapshot_date, chain, circulating, total_supply, supply_controlled)
+             VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (snapshot_date, chain) DO UPDATE SET
+               circulating=EXCLUDED.circulating, total_supply=EXCLUDED.total_supply,
+               supply_controlled=EXCLUDED.supply_controlled`,
+            [today, s.chain, s.circulating, s.totalSupply, s.supplyControlled]
+          );
+        }
+        const total = chainSupplies.reduce((s, c) => s + (c.circulating || 0), 0);
+        console.log(`[Snapshot] USDG supply logged: $${(total / 1e6).toFixed(2)}M total across ${chainSupplies.filter(c => c.circulating != null).length} chains`);
+      } catch (err) {
+        console.error('[Snapshot] Failed to log USDG supply:', err.message);
       }
     }
 

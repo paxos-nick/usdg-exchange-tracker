@@ -3,7 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, LabelList
 } from 'recharts';
-import { useAaveUsdgHistory, useVolumeData, usePairVolumeData } from '../hooks/useVolumeData';
+import { useAaveUsdgHistory, useVolumeData, usePairVolumeData, useUsdgSupply } from '../hooks/useVolumeData';
 
 // ── Paxos brand palette ───────────────────────────────────────────────────────────
 const GDP_BG      = '#f6f8fb';           // Paxos light background
@@ -33,7 +33,17 @@ const VENUE_COLORS = { aave: C_AAVE, okx: C_OKX, bullish: C_BULLISH };
 
 // ── Data computation ──────────────────────────────────────────────────────────────
 
-function computeDaily(aaveHist, okxData, bullishPairs, bullishTotal) {
+// Build a date→totalCirculating lookup from supply history snapshots
+function buildSupplyByDate(supplyHistory) {
+  const byDate = {};
+  for (const row of (supplyHistory || [])) {
+    if (!byDate[row.date]) byDate[row.date] = 0;
+    if (row.circulating != null) byDate[row.date] += row.circulating;
+  }
+  return byDate;
+}
+
+function computeDaily(aaveHist, okxData, bullishPairs, bullishTotal, supplyByDate) {
   const byDate = {};
   const add = (date, patch) => {
     byDate[date] = byDate[date] || { date, aaveBorrow: 0, aaveNim: 0, okxTrading: 0, bullishStable: 0, bullishRisk: 0 };
@@ -41,6 +51,7 @@ function computeDaily(aaveHist, okxData, bullishPairs, bullishTotal) {
   };
 
   for (const row of (aaveHist?.history || [])) {
+    // aaveNim is kept as fallback for days before chain supply logging began
     const idle = Math.max((row.total_supply || 0) - (row.total_debt || 0), 0);
     add(row.date, { aaveBorrow: row.daily_interest || 0, aaveNim: idle * NIM_APY / 365 });
   }
@@ -66,14 +77,21 @@ function computeDaily(aaveHist, okxData, bullishPairs, bullishTotal) {
   return Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date)).map(r => {
     const borrowerInterest = r.aaveBorrow;
     const tradingFees      = r.okxTrading + r.bullishStable + r.bullishRisk;
-    const gdnRewards       = r.aaveNim;
+    // GDN rewards = total circulating supply across all chains × NIM_APY / 365.
+    // Use logged chain supply when available; fall back to AAVE idle proxy until
+    // supply snapshots accumulate.
+    const chainSupply = supplyByDate?.[r.date];
+    const gdnRewards  = chainSupply != null
+      ? chainSupply * NIM_APY / 365
+      : r.aaveNim; // fallback: AAVE idle only
     return {
       ...r,
       borrowerInterest, tradingFees, gdnRewards,
-      aave: r.aaveBorrow + r.aaveNim,
-      okx:  r.okxTrading,
+      hasChainSupply: chainSupply != null,
+      aave:    r.aaveBorrow + r.aaveNim,
+      okx:     r.okxTrading,
       bullish: r.bullishStable + r.bullishRisk,
-      total: borrowerInterest + tradingFees + gdnRewards,
+      total:   borrowerInterest + tradingFees + gdnRewards,
     };
   });
 }
@@ -223,10 +241,15 @@ export default function GdpTab() {
 
   const { data: aaveHist,      loading: l1 } = useAaveUsdgHistory();
   const { data: okxData,       loading: l2 } = useVolumeData('okx');
-  const { data: bullishTotal,  loading: l3 } = useVolumeData('bullish');      // fast, always works
-  const { data: bullishPairs,  loading: l4 } = usePairVolumeData('bullish');  // slow first load, gives stable/risk split
+  const { data: bullishTotal,  loading: l3 } = useVolumeData('bullish');
+  const { data: bullishPairs           }     = usePairVolumeData('bullish');  // non-blocking
+  const { data: supplyData             }     = useUsdgSupply();               // non-blocking
 
-  const daily = useMemo(() => computeDaily(aaveHist, okxData, bullishPairs, bullishTotal), [aaveHist, okxData, bullishPairs, bullishTotal]);
+  const supplyByDate = useMemo(() => buildSupplyByDate(supplyData?.history), [supplyData]);
+  const daily = useMemo(
+    () => computeDaily(aaveHist, okxData, bullishPairs, bullishTotal, supplyByDate),
+    [aaveHist, okxData, bullishPairs, bullishTotal, supplyByDate]
+  );
 
   const chart1 = useMemo(() => sliceView(daily, view1).map(r => ({ ...r, displayDate: fmtLabel(r, view1) })), [daily, view1]);
   const chart2 = useMemo(() => sliceView(daily, view2).map(r => ({ ...r, displayDate: fmtLabel(r, view2) })), [daily, view2]);
@@ -279,7 +302,7 @@ export default function GdpTab() {
             <Tile label="Trading Fees Paid" value={totals.tradingFees} color={C_TRADING}
               sub="est. from CEX trading volumes" />
             <Tile label="GDN Rewards Paid" value={totals.gdnRewards} color={C_REWARDS}
-              sub={`USDG supply × ${(NIM_APY * 100).toFixed(1)}% APY`} />
+              sub={`circulating USDG × ${(NIM_APY * 100).toFixed(1)}% APY`} />
           </div>
 
           {/* ── CHART 1: by category ── */}
@@ -378,7 +401,7 @@ export default function GdpTab() {
             border: `1px solid ${GDP_BORDER}`, borderRadius: 8, fontSize: 12, color: C_DIM, lineHeight: 1.6 }}>
             <strong style={{ color: C_TEXT }}>Methodology: </strong>
             Borrower interest = AAVE daily borrow interest.
-            GDN rewards = USDG supply × {(NIM_APY * 100).toFixed(1)}% APY.
+            GDN rewards = total circulating USDG (all chains) × {(NIM_APY * 100).toFixed(1)}% APY; falls back to AAVE idle proxy until chain snapshots accumulate.
             Trading fees: OKX USDG/USDT × 2bps; Bullish USDGUSDC × 2bps, BTCUSDG × 7bps.
             Prototype — additional venues and custody rewards TBD.
           </div>
