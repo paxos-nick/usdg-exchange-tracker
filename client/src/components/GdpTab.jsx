@@ -422,7 +422,7 @@ export default function GdpTab() {
       {loading ? <div style={{ color: C_DIM, padding: 40, textAlign: 'center' }}>Loading…</div> : (
         <>
           {/* ── STAT TILES ── */}
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 24 }}>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: view1 === '4q' ? 10 : 24 }}>
             <Tile label="Total GDP" value={totals.total} color={C_TOTAL}
               sub={view1 === '30d' ? 'last 30 days' : view1 === '12m' ? 'last 12 months' : 'last 4 quarters'} />
             <Tile label="Borrower Interest Paid" value={totals.borrowerInterest} color={C_BORROW}
@@ -432,6 +432,37 @@ export default function GdpTab() {
             <Tile label="GDN Rewards Paid" value={totals.gdnRewards} color={C_REWARDS}
               sub={`circulating USDG × ${(NIM_APY * 100).toFixed(1)}% APY`} />
           </div>
+
+          {/* ── QUARTERLY ESTIMATE TILES ── */}
+          {view1 === '4q' && (() => {
+            const curIdx  = chart1.findIndex(r => r.isCurrentQuarter);
+            const cur     = chart1[curIdx];
+            const prev    = curIdx > 0 ? chart1[curIdx - 1] : null;
+            if (!cur) return null;
+            const qtd     = cur.total || 0;
+            const eoq     = qtd + (cur.projectedRemaining || 0);
+            const estQoQ  = prev?.total > 0 ? ((eoq - prev.total) / prev.total) * 100 : null;
+            const actQoQ  = prev?.total > 0 ? ((qtd  - prev.total) / prev.total) * 100 : null;
+            const qLabel  = cur.label || cur.period;
+            return (
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 24,
+                padding: '12px 14px', background: GDP_CARD_BG, border: `1px dashed ${GDP_BORDER}`,
+                borderRadius: 10 }}>
+                <div style={{ width: '100%', marginBottom: 4, fontSize: 11, color: C_DIM, fontWeight: 600,
+                  textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  {qLabel} estimates
+                </div>
+                <Tile label="Quarter-to-date" value={qtd} color={C_TOTAL}
+                  sub={`actual so far this quarter`} />
+                <Tile label="Estimated full quarter" value={eoq} color={C_TRADING}
+                  sub={`QTD extrapolated to end of quarter`} />
+                <Tile label="Est. QoQ growth"
+                  value={estQoQ != null ? (estQoQ >= 0 ? '+' : '') + estQoQ.toFixed(1) + '%' : '—'}
+                  color={estQoQ != null ? (estQoQ >= 0 ? '#29a784' : '#ef4444') : C_DIM}
+                  sub={actQoQ != null ? `vs prior quarter · actual QTD: ${actQoQ >= 0 ? '+' : ''}${actQoQ.toFixed(1)}%` : 'vs prior quarter'} />
+              </div>
+            );
+          })()}
 
           {/* ── CHART 1: by category ── */}
           <ChartSection title="GDP by Category"
