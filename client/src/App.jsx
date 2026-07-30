@@ -19,6 +19,7 @@ import PyusdTab from './components/PyusdTab';
 import PaxgSupplyTab from './components/PaxgSupplyTab';
 import BinancePaxgTab from './components/BinancePaxgTab';
 import AaveUsdgTab from './components/AaveUsdgTab';
+import GdpTab from './components/GdpTab';
 import PaxgVolumeTab from './components/PaxgVolumeTab';
 import { useVolumeData, usePairVolumeData } from './hooks/useVolumeData';
 
@@ -53,8 +54,9 @@ const TAB_GROUPS = [
     { id: 'binance-paxg', label: 'Binance PAXG' },
   ] },
   { label: 'More', tabs: [
-    { id: 'pyusd',   label: 'PYUSD' },
-    { id: 'fusebox', label: 'Fuse Box' },
+    { id: 'usdg-gdp', label: 'USDG GDP' },
+    { id: 'pyusd',    label: 'PYUSD' },
+    { id: 'fusebox',  label: 'Fuse Box' },
   ] },
 ];
 
@@ -137,7 +139,7 @@ export default function App() {
 
   const hideDefiTabs = import.meta.env.VITE_HIDE_DEFI_TABS === 'true';
 
-  const VALID_TABS = ['overall','dashboard','weekly','monthly','depth','totaldefi','dex','vaults','fusebox','pyusd','paxg-supply','paxg-volume','binance-paxg','aave-usdg'];
+  const VALID_TABS = ['overall','dashboard','weekly','monthly','depth','totaldefi','dex','vaults','fusebox','pyusd','paxg-supply','paxg-volume','binance-paxg','aave-usdg','usdg-gdp'];
   const pathToTab = (path) => {
     const slug = path.replace(/^\//, '') || 'overall';
     return VALID_TABS.includes(slug) ? slug : 'overall';
@@ -207,6 +209,8 @@ export default function App() {
         <PaxgVolumeTab />
       ) : activeTab === 'binance-paxg' ? (
         <BinancePaxgTab />
+      ) : activeTab === 'usdg-gdp' ? (
+        <GdpTab />
       ) : activeTab === 'aave-usdg' ? (
         <AaveUsdgTab />
       ) : (
