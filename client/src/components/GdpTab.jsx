@@ -28,10 +28,52 @@ const STABLE_FEE = 0.0002;
 const RISK_FEE   = 0.0007;
 
 const VENUES = ['aave', 'okx', 'bullish'];
+
+// Chain-level GDN reward breakdown
+const CHAIN_KEYS   = ['ethereum', 'solana', 'xlayer', 'robinhood', 'ink', 'arbitrum'];
+const CHAIN_LABELS = { ethereum: 'Ethereum', solana: 'Solana', xlayer: 'xLayer',
+  robinhood: 'Robinhood', ink: 'Ink', arbitrum: 'Arbitrum' };
+const CHAIN_COLORS = { ethereum: '#0094d8', solana: '#9945FF', xlayer: '#43494e',
+  robinhood: '#c7e36c', ink: '#19282f', arbitrum: '#28a0f0' };
 const VENUE_LABELS = { aave: 'AAVE', okx: 'OKX', bullish: 'Bullish' };
 const VENUE_COLORS = { aave: C_AAVE, okx: C_OKX, bullish: C_BULLISH };
 
 // ── Data computation ──────────────────────────────────────────────────────────────
+
+// Build daily GDN rewards broken down by chain from supply history
+function buildChainGdnDaily(supplyHistory) {
+  const byDate = {};
+  for (const row of (supplyHistory || [])) {
+    if (!row.circulating || !row.chain) continue;
+    if (!byDate[row.date]) byDate[row.date] = { date: row.date };
+    byDate[row.date][row.chain] = (row.circulating || 0) * NIM_APY / 365;
+  }
+  return Object.values(byDate)
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map(r => ({ ...r, total: CHAIN_KEYS.reduce((s, k) => s + (r[k] || 0), 0) }));
+}
+
+function aggregateChainBy(daily, unit) {
+  const buckets = {};
+  for (const row of daily) {
+    const d = parseDate(row.date);
+    let key, label, sort;
+    if (unit === 'month') {
+      key = row.date.slice(0, 7);
+      label = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+      sort  = key;
+    } else {
+      const y = d.getFullYear(), q = Math.ceil((d.getMonth() + 1) / 3);
+      key = `${y}-Q${q}`; label = `Q${q} '${String(y).slice(2)}`; sort = `${y}-0${q}`;
+    }
+    if (!buckets[key]) {
+      buckets[key] = { period: key, label, sort, total: 0 };
+      CHAIN_KEYS.forEach(k => { buckets[key][k] = 0; });
+    }
+    for (const k of [...CHAIN_KEYS, 'total']) buckets[key][k] += row[k] || 0;
+  }
+  return Object.values(buckets).sort((a, b) => a.sort.localeCompare(b.sort));
+}
 
 // Build a date→totalCirculating lookup from supply history snapshots
 function buildSupplyByDate(supplyHistory) {
@@ -236,6 +278,7 @@ export default function GdpTab() {
   const [view1, setView1]           = useState('30d');
   const [view2, setView2]           = useState('30d');
   const [view3, setView3]           = useState('30d');
+  const [view4, setView4]           = useState('30d');
   const [activeVenues, setActiveVenues] = useState(new Set(VENUES));
   const [selectedVenue, setSelectedVenue] = useState('aave');
 
@@ -245,7 +288,14 @@ export default function GdpTab() {
   const { data: bullishPairs           }     = usePairVolumeData('bullish');  // non-blocking
   const { data: supplyData             }     = useUsdgSupply();               // non-blocking
 
-  const supplyByDate = useMemo(() => buildSupplyByDate(supplyData?.history), [supplyData]);
+  const supplyByDate    = useMemo(() => buildSupplyByDate(supplyData?.history), [supplyData]);
+  const chainGdnDaily   = useMemo(() => buildChainGdnDaily(supplyData?.history), [supplyData]);
+  const chart4 = useMemo(() => {
+    if (!chainGdnDaily.length) return [];
+    if (view4 === '30d') return chainGdnDaily.slice(-30).map(r => ({ ...r, displayDate: fmtLabel(r, '30d') }));
+    const agg = aggregateChainBy(chainGdnDaily, view4 === '12m' ? 'month' : 'quarter');
+    return (view4 === '12m' ? agg.slice(-12) : agg.slice(-4)).map(r => ({ ...r, displayDate: r.label }));
+  }, [chainGdnDaily, view4]);
   const daily = useMemo(
     () => computeDaily(aaveHist, okxData, bullishPairs, bullishTotal, supplyByDate),
     [aaveHist, okxData, bullishPairs, bullishTotal, supplyByDate]
@@ -395,6 +445,36 @@ export default function GdpTab() {
               </ResponsiveContainer>
             </div>
           </ChartSection>
+
+          {/* Chart 4: GDN rewards by chain */}
+          {chart4.length > 0 && (
+            <ChartSection title="GDN Rewards by Chain"
+              controls={<ViewToggle value={view4} onChange={setView4} />}>
+              <div style={{ height: 280 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chart4} margin={{ top: 10, right: 16, left: 8, bottom: 5 }} barCategoryGap="18%">
+                    <CartesianGrid strokeDasharray="3 3" stroke={C_GRID} />
+                    <XAxis dataKey="displayDate" stroke={C_DIM} tick={{ fill: C_DIM, fontSize: 11 }}
+                      tickMargin={8} interval="preserveStartEnd" />
+                    <YAxis stroke={C_DIM} tick={{ fill: C_DIM, fontSize: 11 }} tickFormatter={fmtShort} width={65} />
+                    <Tooltip
+                      cursor={{ fill: C_CURSOR }}
+                      contentStyle={{ background: '#ffffff', border: `1px solid ${GDP_BORDER}`,
+                        borderRadius: 8, boxShadow: '0 4px 12px rgba(25,40,47,0.12)', color: C_TEXT, minWidth: 200 }}
+                      labelStyle={{ color: C_DIM, fontSize: 12 }}
+                      formatter={(v, name) => [fmtUSD(v), CHAIN_LABELS[name] || name]} />
+                    <Legend iconType="square" wrapperStyle={{ color: C_DIM, fontSize: 12 }}
+                      formatter={v => CHAIN_LABELS[v] || v} />
+                    {CHAIN_KEYS.filter(k => chart4.some(r => (r[k] || 0) > 0)).map((k, i, arr) => (
+                      <Bar key={k} dataKey={k} stackId="c" fill={CHAIN_COLORS[k]}
+                        radius={i === arr.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]}
+                        isAnimationActive={false} />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </ChartSection>
+          )}
 
           {/* Methodology */}
           <div style={{ marginTop: 20, padding: '10px 14px', background: GDP_CARD_BG,
