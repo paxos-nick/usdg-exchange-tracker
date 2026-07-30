@@ -525,6 +525,24 @@ router.get('/binance/paxg/depth-history', async (req, res) => {
   }
 });
 
+// GET /api/hood/volume-history - Accurate Hood (Uniswap) daily volume from GeckoTerminal OHLCV
+// Bypasses the unreliable pool-endpoint volume_usd.h24 field (returns 0 inconsistently)
+router.get('/hood/volume-history', async (req, res) => {
+  const cacheKey = 'hood_volume_history';
+  const cached = cache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < 60 * 60 * 1000) return res.json(cached.data);
+  try {
+    const { getVolumeHistory } = require('../services/uniswapHood');
+    const history = await getVolumeHistory(100);
+    const data = { history };
+    cache.set(cacheKey, { data, timestamp: Date.now() });
+    res.json(data);
+  } catch (err) {
+    console.error('Error fetching Hood volume history:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/usdg/supply - Live circulating supply per chain + historical snapshots
 router.get('/usdg/supply', async (req, res) => {
   try {

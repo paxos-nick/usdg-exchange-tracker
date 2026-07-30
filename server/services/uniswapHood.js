@@ -33,17 +33,40 @@ const POOLS = [
   },
 ];
 
+async function fetchOhlcvBars(poolId, limit) {
+  const { data } = await axios.get(
+    `${GECKO}/networks/${NETWORK}/pools/${poolId}/ohlcv/day`,
+    { params: { limit }, headers: { Accept: 'application/json' }, timeout: 15000 }
+  );
+  return data.data?.attributes?.ohlcv_list || []; // each bar: [timestamp, open, high, low, close, volume]
+}
+
 async function fetchOhlcvVolume(poolId, days) {
   try {
-    const { data } = await axios.get(
-      `${GECKO}/networks/${NETWORK}/pools/${poolId}/ohlcv/day`,
-      { params: { limit: days }, headers: { Accept: 'application/json' }, timeout: 15000 }
-    );
-    const bars = data.data?.attributes?.ohlcv_list || [];
-    return bars.reduce((sum, bar) => sum + (bar[5] || 0), 0); // index 5 = volume
+    const bars = await fetchOhlcvBars(poolId, days);
+    return bars.reduce((sum, bar) => sum + (bar[5] || 0), 0);
   } catch {
     return null;
   }
+}
+
+// Returns daily volume history for all pools combined: [{date, volume}]
+async function getVolumeHistory(days = 100) {
+  const byDate = {};
+  await Promise.all(POOLS.map(async pool => {
+    try {
+      const bars = await fetchOhlcvBars(pool.id, days);
+      for (const bar of bars) {
+        const date = new Date(bar[0] * 1000).toISOString().split('T')[0];
+        byDate[date] = (byDate[date] || 0) + (bar[5] || 0);
+      }
+    } catch (err) {
+      console.error(`[UniswapHood] OHLCV error for ${pool.name}:`, err.message);
+    }
+  }));
+  return Object.entries(byDate)
+    .map(([date, volume]) => ({ date, volume }))
+    .sort((a, b) => a.date.localeCompare(b.date));
 }
 
 async function getPoolData(pool) {
@@ -64,15 +87,15 @@ async function getPoolData(pool) {
   const quoteTok   = included.find(i => i.id === quoteRelId)?.attributes || {};
 
   const [symA, symB] = pool.name.split('/');
-  const tvlUsd  = parseFloat(attrs.reserve_in_usd) || 0;
-  const vol24h  = parseFloat(attrs.volume_usd?.h24) || 0;
-  const fees24h = vol24h * pool.feeRate;
+  const tvlUsd = parseFloat(attrs.reserve_in_usd) || 0;
 
-  // Fetch 7d and 30d volume from daily OHLCV bars (GeckoTerminal free tier supports this)
-  const [vol7d, vol30d] = await Promise.all([
+  // Use OHLCV for all volume windows — pool endpoint's volume_usd.h24 returns 0 inconsistently
+  const [vol24h, vol7d, vol30d] = await Promise.all([
+    fetchOhlcvVolume(pool.id, 1),   // single bar = yesterday's full calendar-day volume
     fetchOhlcvVolume(pool.id, 7),
     fetchOhlcvVolume(pool.id, 30),
   ]);
+  const fees24h = (vol24h || 0) * pool.feeRate;
   const fees7d  = vol7d  != null ? vol7d  * pool.feeRate : null;
   const fees30d = vol30d != null ? vol30d * pool.feeRate : null;
 
@@ -89,7 +112,7 @@ async function getPoolData(pool) {
     usdgBalance: tvlUsd / 2,
     feeRate:     pool.feeRate,
     stats: {
-      '24h': { volume: vol24h, fees: fees24h, yieldOverTvl: tvlUsd > 0 ? fees24h / tvlUsd : 0 },
+      '24h': { volume: vol24h ?? 0, fees: fees24h, yieldOverTvl: tvlUsd > 0 ? fees24h / tvlUsd : 0 },
       '7d':  { volume: vol7d,  fees: fees7d,  yieldOverTvl: tvlUsd > 0 && fees7d  != null ? fees7d  / tvlUsd : null },
       '30d': { volume: vol30d, fees: fees30d, yieldOverTvl: tvlUsd > 0 && fees30d != null ? fees30d / tvlUsd : null },
     },
@@ -109,4 +132,4 @@ async function getAllPools() {
   return results;
 }
 
-module.exports = { POOLS, getPoolData, getAllPools };
+module.exports = { POOLS, getPoolData, getAllPools, getVolumeHistory };

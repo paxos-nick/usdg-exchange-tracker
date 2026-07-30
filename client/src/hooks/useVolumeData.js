@@ -434,6 +434,27 @@ export function usePyusdData() {
   return { data, loading, error, lastUpdated, refetch: fetchData };
 }
 
+export function useHoodVolumeHistory() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/hood/volume-history');
+      if (!response.ok) throw new Error(response.statusText);
+      setData(await response.json());
+    } catch (err) {
+      console.error('Hood volume history error:', err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+  return { data, loading, refetch: fetchData };
+}
+
 export function useUsdgSupply() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);

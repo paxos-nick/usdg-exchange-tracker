@@ -11,7 +11,7 @@ import {
   LabelList
 } from 'recharts';
 import TimeRangeSelector from './TimeRangeSelector';
-import { useAggregatedData, useDefiPools, useDexHistory } from '../hooks/useVolumeData';
+import { useAggregatedData, useDefiPools, useDexHistory, useHoodVolumeHistory } from '../hooks/useVolumeData';
 
 const SOURCE_COLORS = {
   kraken:       '#7c3aed',
@@ -113,6 +113,7 @@ export default function OverallVolumeChart() {
   const { data: cexData, loading: cexLoading } = useAggregatedData();
   const { data: dexData, loading: dexLoading } = useDefiPools();
   const { data: dexHistory, loading: histLoading } = useDexHistory();
+  const { data: hoodOhlcv } = useHoodVolumeHistory(); // accurate OHLCV — non-blocking
   const [timeRange, setTimeRange] = useState('30d');
 
   const loading = cexLoading || dexLoading || histLoading;
@@ -146,10 +147,12 @@ export default function OverallVolumeChart() {
         .reduce((sum, p) => sum + (p.volume24h || 0), 0);
       if (curveVol > 0) curveHistoryByDate[snap.date] = curveVol;
 
+      // Hood volumes from JSONL are unreliable (pool endpoint returns 0 inconsistently).
+      // Prefer OHLCV data; JSONL serves as last-resort fallback only.
       const hoodVol = snap.pools
         .filter(p => p.chain === 'robinhood')
         .reduce((sum, p) => sum + (p.volume24h || 0), 0);
-      if (hoodVol > 0) hoodHistoryByDate[snap.date] = hoodVol;
+      if (hoodVol > 0 && !hoodHistoryByDate[snap.date]) hoodHistoryByDate[snap.date] = hoodVol;
     }
   }
 
@@ -158,6 +161,10 @@ export default function OverallVolumeChart() {
   const livePools = dexData?.pools || [];
   const orcaVolume24h  = livePools.filter(p => p.venue === 'Orca').reduce((sum, p) => sum + (p.stats?.['24h']?.volume || 0), 0);
   const curveVolume24h = livePools.filter(p => p.venue === 'Curve').reduce((sum, p) => sum + (p.stats?.['24h']?.volume || 0), 0);
+  // Prefer OHLCV-based history for Hood; OHLCV is the accurate source
+  for (const row of (hoodOhlcv?.history || [])) {
+    if (row.volume > 0) hoodHistoryByDate[row.date] = row.volume;
+  }
   const hoodVolume24h  = livePools.filter(p => p.chain === 'robinhood').reduce((sum, p) => sum + (p.stats?.['24h']?.volume || 0), 0);
 
   const mergedData = cexDaily.map(d => {
