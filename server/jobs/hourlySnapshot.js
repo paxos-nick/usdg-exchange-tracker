@@ -176,6 +176,7 @@ async function runSnapshot() {
     // Daily: USDG circulating supply by chain
     if (isDailyRun) {
       try {
+        const supplyDate = new Date().toISOString().split('T')[0];
         const chainSupplies = await getAllChainSupply();
         for (const s of chainSupplies) {
           if (s.circulating == null) continue;
@@ -185,7 +186,7 @@ async function runSnapshot() {
              ON CONFLICT (snapshot_date, chain) DO UPDATE SET
                circulating=EXCLUDED.circulating, total_supply=EXCLUDED.total_supply,
                supply_controlled=EXCLUDED.supply_controlled`,
-            [today, s.chain, s.circulating, s.totalSupply, s.supplyControlled]
+            [supplyDate, s.chain, s.circulating, s.totalSupply, s.supplyControlled]
           );
         }
         const total = chainSupplies.reduce((s, c) => s + (c.circulating || 0), 0);
