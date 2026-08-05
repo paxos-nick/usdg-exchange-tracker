@@ -23,6 +23,7 @@ const SOURCE_COLORS = {
   orca:         '#ff6b35',
   curve:        '#e64980',
   uniswap_hood: '#22c55e',
+  bitstamp:     '#e84142',
 };
 
 const SOURCE_NAMES = {
@@ -32,6 +33,7 @@ const SOURCE_NAMES = {
   kucoin:       'Kucoin',
   bitmart:      'Bitmart',
   okx:          'OKX',
+  bitstamp:     'Bitstamp',
   orca:         'Orca (DEX)',
   curve:        'Curve (DEX)',
   uniswap_hood: 'Hood (Uniswap)',

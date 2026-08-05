@@ -6,6 +6,7 @@ const kucoinService = require('../services/kucoin');
 const bitmartService = require('../services/bitmart');
 const okxService = require('../services/okx');
 const bitgetService = require('../services/bitget');
+const bitstampService = require('../services/bitstamp');
 
 const cryptocomService = require('../services/cryptocom');
 const binanceService = require('../services/binance');
@@ -17,7 +18,7 @@ const dbPool = require('../db/pool');
 const router = express.Router();
 
 // All supported exchanges
-const EXCHANGES = ['kraken', 'bullish', 'gate', 'kucoin', 'bitmart', 'okx'];
+const EXCHANGES = ['kraken', 'bullish', 'gate', 'kucoin', 'bitmart', 'okx', 'bitstamp'];
 
 // Service map for easy lookup
 const services = {
@@ -26,7 +27,8 @@ const services = {
   gate: gateService,
   kucoin: kucoinService,
   bitmart: bitmartService,
-  okx: okxService
+  okx: okxService,
+  bitstamp: bitstampService,
 };
 
 // Simple in-memory cache with 6-hour TTL

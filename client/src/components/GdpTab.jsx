@@ -28,7 +28,7 @@ const STABLE_FEE = 0.0002;
 const RISK_FEE   = 0.0007;
 const HOOD_FEE   = 0.0001; // ETH/USDG v3 pool on-chain fee: 1 bps (0.01%), confirmed via fee() call
 
-const VENUES = ['aave', 'okx', 'bullish', 'kraken', 'gate', 'kucoin', 'uniswap_hood'];
+const VENUES = ['aave', 'okx', 'bullish', 'kraken', 'gate', 'kucoin', 'bitstamp', 'uniswap_hood'];
 
 // Chain-level GDN reward breakdown
 const CHAIN_KEYS   = ['ethereum', 'solana', 'xlayer', 'robinhood', 'ink', 'arbitrum'];
@@ -37,9 +37,9 @@ const CHAIN_LABELS = { ethereum: 'Ethereum', solana: 'Solana', xlayer: 'xLayer',
 const CHAIN_COLORS = { ethereum: '#0094d8', solana: '#9945FF', xlayer: '#43494e',
   robinhood: '#c7e36c', ink: '#19282f', arbitrum: '#28a0f0' };
 const VENUE_LABELS = { aave: 'AAVE', okx: 'OKX', bullish: 'Bullish',
-  kraken: 'Kraken', gate: 'Gate', kucoin: 'KuCoin', uniswap_hood: 'Hood (Uniswap)' };
+  kraken: 'Kraken', gate: 'Gate', kucoin: 'KuCoin', bitstamp: 'Bitstamp', uniswap_hood: 'Hood (Uniswap)' };
 const VENUE_COLORS = { aave: C_AAVE, okx: C_OKX, bullish: C_BULLISH,
-  kraken: '#5741d9', gate: '#0ba5ec', kucoin: '#29a784', uniswap_hood: '#ff007a' };
+  kraken: '#5741d9', gate: '#0ba5ec', kucoin: '#29a784', bitstamp: '#e84142', uniswap_hood: '#ff007a' };
 
 // ── Data computation ──────────────────────────────────────────────────────────────
 
@@ -89,12 +89,12 @@ function buildSupplyByDate(supplyHistory) {
 }
 
 function computeDaily(aaveHist, okxData, bullishPairs, bullishTotal, supplyByDate,
-  krakenData, gateData, kucoinPairs, kucoinTotal, hoodOhlcv) {
+  krakenData, gateData, kucoinPairs, kucoinTotal, bitstampData, hoodOhlcv) {
   const byDate = {};
   const add = (date, patch) => {
     if (!byDate[date]) byDate[date] = { date, aaveBorrow: 0, aaveNim: 0, okxTrading: 0,
       bullishStable: 0, bullishRisk: 0, krakenTrading: 0, gateTrading: 0,
-      kucoinStable: 0, kucoinRisk: 0, uniswapHoodTrading: 0 };
+      kucoinStable: 0, kucoinRisk: 0, bitstampTrading: 0, uniswapHoodTrading: 0 };
     Object.assign(byDate[date], patch);
   };
 
@@ -137,6 +137,10 @@ function computeDaily(aaveHist, okxData, bullishPairs, bullishTotal, supplyByDat
       add(row.date, { kucoinStable: (row.volume || 0) * STABLE_FEE });
   }
 
+  // Bitstamp: USDG/USD — stable/fiat (2bps)
+  for (const row of (bitstampData?.dailyVolume || []))
+    add(row.date, { bitstampTrading: (row.volume || 0) * STABLE_FEE });
+
   // Uniswap Hood: OHLCV-accurate daily volumes; ETH/USDG v3 pool fee = 1 bps (confirmed on-chain)
   for (const row of (hoodOhlcv?.history || []))
     if (row.volume > 0) add(row.date, { uniswapHoodTrading: (row.volume || 0) * HOOD_FEE });
@@ -144,7 +148,7 @@ function computeDaily(aaveHist, okxData, bullishPairs, bullishTotal, supplyByDat
   return Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date)).map(r => {
     const borrowerInterest = r.aaveBorrow;
     const tradingFees = r.okxTrading + r.bullishStable + r.bullishRisk
-      + r.krakenTrading + r.gateTrading + r.kucoinStable + r.kucoinRisk + r.uniswapHoodTrading;
+      + r.krakenTrading + r.gateTrading + r.kucoinStable + r.kucoinRisk + r.bitstampTrading + r.uniswapHoodTrading;
     const chainSupply = supplyByDate?.[r.date];
     const gdnRewards  = chainSupply != null ? chainSupply * NIM_APY / 365 : r.aaveNim;
     return {
@@ -157,6 +161,7 @@ function computeDaily(aaveHist, okxData, bullishPairs, bullishTotal, supplyByDat
       kraken:       r.krakenTrading,
       gate:         r.gateTrading,
       kucoin:       r.kucoinStable + r.kucoinRisk,
+      bitstamp:     r.bitstampTrading,
       uniswap_hood: r.uniswapHoodTrading,
       total:        borrowerInterest + tradingFees + gdnRewards,
     };
@@ -183,9 +188,9 @@ function aggregateBy(daily, unit) {
     }
     if (!buckets[key]) buckets[key] = { period: key, label, sort,
       borrowerInterest: 0, tradingFees: 0, gdnRewards: 0,
-      aave: 0, okx: 0, bullish: 0, kraken: 0, gate: 0, kucoin: 0, uniswap_hood: 0, total: 0 };
+      aave: 0, okx: 0, bullish: 0, kraken: 0, gate: 0, kucoin: 0, bitstamp: 0, uniswap_hood: 0, total: 0 };
     for (const k of ['borrowerInterest','tradingFees','gdnRewards',
-      'aave','okx','bullish','kraken','gate','kucoin','uniswap_hood','total'])
+      'aave','okx','bullish','kraken','gate','kucoin','bitstamp','uniswap_hood','total'])
       buckets[key][k] += row[k] || 0;
   }
   return Object.values(buckets).sort((a, b) => a.sort.localeCompare(b.sort));
@@ -330,6 +335,7 @@ const VenueTooltip = makeTooltip([
   { key: 'kraken',       label: 'Kraken',          color: '#5741d9' },
   { key: 'gate',         label: 'Gate',            color: '#0ba5ec' },
   { key: 'kucoin',       label: 'KuCoin',          color: '#29a784' },
+  { key: 'bitstamp',     label: 'Bitstamp',        color: '#e84142' },
   { key: 'uniswap_hood', label: 'Hood (Uniswap)',  color: '#ff007a' },
 ]);
 
@@ -358,6 +364,7 @@ export default function GdpTab() {
   const { data: gateData               }     = useVolumeData('gate');
   const { data: kucoinTotal            }     = useVolumeData('kucoin');
   const { data: kucoinPairs            }     = usePairVolumeData('kucoin');
+  const { data: bitstampData           }     = useVolumeData('bitstamp');
   const { data: hoodOhlcv              }     = useHoodVolumeHistory();
   const { data: supplyData             }     = useUsdgSupply();
 
@@ -371,9 +378,9 @@ export default function GdpTab() {
   }, [chainGdnDaily, view4]);
   const daily = useMemo(
     () => computeDaily(aaveHist, okxData, bullishPairs, bullishTotal, supplyByDate,
-      krakenData, gateData, kucoinPairs, kucoinTotal, hoodOhlcv),
+      krakenData, gateData, kucoinPairs, kucoinTotal, bitstampData, hoodOhlcv),
     [aaveHist, okxData, bullishPairs, bullishTotal, supplyByDate,
-     krakenData, gateData, kucoinPairs, kucoinTotal, hoodOhlcv]
+     krakenData, gateData, kucoinPairs, kucoinTotal, bitstampData, hoodOhlcv]
   );
 
   const chart1 = useMemo(() => {
@@ -569,6 +576,7 @@ export default function GdpTab() {
                   {activeVenues.has('kraken')       && <Bar dataKey="kraken"       stackId="v" fill={VENUE_COLORS.kraken}          name="Kraken"          isAnimationActive={false} />}
                   {activeVenues.has('gate')         && <Bar dataKey="gate"         stackId="v" fill={VENUE_COLORS.gate}            name="Gate"            isAnimationActive={false} />}
                   {activeVenues.has('kucoin')       && <Bar dataKey="kucoin"       stackId="v" fill={VENUE_COLORS.kucoin}          name="KuCoin"          isAnimationActive={false} />}
+                  {activeVenues.has('bitstamp')     && <Bar dataKey="bitstamp"     stackId="v" fill={VENUE_COLORS.bitstamp}        name="Bitstamp"        isAnimationActive={false} />}
                   {activeVenues.has('uniswap_hood') && <Bar dataKey="uniswap_hood" stackId="v" fill={VENUE_COLORS.uniswap_hood}    name="Hood (Uniswap)"  radius={[3,3,0,0]} isAnimationActive={false} />}
                 </BarChart>
               </ResponsiveContainer>
