@@ -381,13 +381,13 @@ function DivergingBarChart({ chartData }) {
         </div>
       </div>
 
-      {latest?.outOfPocket != null && (
+      {net != null && (
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', margin: '12px 0 8px' }}>
           <span style={{ fontSize: 24, fontWeight: 700, color: statusColor }}>
-            {formatUSD(latest.outOfPocket)}/day
+            {net >= 0 ? '+' : '−'}{formatUSD(Math.abs(net))}/day
           </span>
           <span style={{ color: '#c4c8cc', fontSize: 13 }}>
-            out-of-pocket on {latest.displayDate}
+            net position on {latest?.displayDate}
           </span>
           {coverage != null && (
             <span style={{ color: '#71767b', fontSize: 12 }}>
