@@ -52,4 +52,19 @@ async function getPerPairVolume() {
   }
 }
 
-module.exports = { getAggregatedVolume, getPerPairVolume };
+function getUSDGPairs() {
+  return [{ symbol: 'usdgusd', displayName: 'USDG/USD', base: 'USDG', quote: 'USD' }];
+}
+
+async function getOrderbook(pairSymbol) {
+  const { data } = await axios.get(`${BASE_URL}/order_book/${pairSymbol}/`, {
+    headers: { Accept: 'application/json' },
+    timeout: 10000,
+  });
+  return {
+    bids: (data.bids || []).map(b => [parseFloat(b[0]), parseFloat(b[1])]),
+    asks: (data.asks || []).map(a => [parseFloat(a[0]), parseFloat(a[1])]),
+  };
+}
+
+module.exports = { getAggregatedVolume, getPerPairVolume, getUSDGPairs, getOrderbook };
