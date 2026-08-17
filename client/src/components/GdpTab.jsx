@@ -427,6 +427,25 @@ export default function GdpTab() {
   }), [daily, view3, selectedVenue]);
 
   // Totals for the first chart's window
+  // ARR = trailing 7-day average × 365 (smooths daily noise)
+  const arr = useMemo(() => {
+    const last7 = daily.slice(-7).filter(r => r.total > 0);
+    if (!last7.length) return null;
+    const n = last7.length;
+    const sum = last7.reduce((acc, r) => ({
+      borrowerInterest: acc.borrowerInterest + (r.borrowerInterest || 0),
+      tradingFees:      acc.tradingFees      + (r.tradingFees      || 0),
+      gdnRewards:       acc.gdnRewards       + (r.gdnRewards       || 0),
+      total:            acc.total            + (r.total            || 0),
+    }), { borrowerInterest: 0, tradingFees: 0, gdnRewards: 0, total: 0 });
+    return {
+      borrowerInterest: sum.borrowerInterest / n * 365,
+      tradingFees:      sum.tradingFees      / n * 365,
+      gdnRewards:       sum.gdnRewards       / n * 365,
+      total:            sum.total            / n * 365,
+    };
+  }, [daily]);
+
   const totals = useMemo(() => chart1.reduce(
     (acc, r) => { acc.borrowerInterest += r.borrowerInterest || 0; acc.tradingFees += r.tradingFees || 0;
       acc.gdnRewards += r.gdnRewards || 0; acc.total += r.total || 0; return acc; },
@@ -461,13 +480,13 @@ export default function GdpTab() {
           {/* ── STAT TILES ── */}
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: view1 === '4q' ? 10 : 24 }}>
             <Tile label="Total GDP" value={totals.total} color={C_TOTAL}
-              sub={view1 === '30d' ? 'last 30 days' : view1 === '12m' ? 'last 12 months' : 'last 4 quarters'} />
+              sub={`${view1 === '30d' ? 'last 30 days' : view1 === '12m' ? 'last 12 months' : 'last 4 quarters'} · ARR ${arr ? fmtUSD(arr.total) : '—'}`} />
             <Tile label="Borrower Interest Paid" value={totals.borrowerInterest} color={C_BORROW}
-              sub="what USDG borrowers pay" />
+              sub={`what USDG borrowers pay · ARR ${arr ? fmtUSD(arr.borrowerInterest) : '—'}`} />
             <Tile label="Trading Fees Paid" value={totals.tradingFees} color={C_TRADING}
-              sub="est. from CEX trading volumes" />
+              sub={`est. from CEX volumes · ARR ${arr ? fmtUSD(arr.tradingFees) : '—'}`} />
             <Tile label="GDN Rewards Paid" value={totals.gdnRewards} color={C_REWARDS}
-              sub={`circulating USDG × ${(NIM_APY * 100).toFixed(1)}% APY`} />
+              sub={`circulating USDG × ${(NIM_APY * 100).toFixed(1)}% · ARR ${arr ? fmtUSD(arr.gdnRewards) : '—'}`} />
           </div>
 
           {/* ── QUARTERLY ESTIMATE TILES ── */}
