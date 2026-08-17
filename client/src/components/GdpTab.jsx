@@ -296,20 +296,26 @@ function ChartSection({ title, children, controls }) {
   );
 }
 
-function makeTooltip(rows) {
+function makeTooltip(rows, { showPct = false } = {}) {
   return function GdpTooltip({ active, payload, label }) {
     if (!active || !payload?.length) return null;
     const r = payload[0].payload;
     const items = rows.filter(row => (r[row.key] || 0) > 0);
+    const total = r.total || 1;
     return (
       <div style={{ background: '#ffffff', border: `1px solid ${GDP_BORDER}`, borderRadius: 8,
-        boxShadow: '0 4px 12px rgba(25,40,47,0.12)', padding: '10px 14px', color: C_TEXT, minWidth: 210 }}>
+        boxShadow: '0 4px 12px rgba(25,40,47,0.12)', padding: '10px 14px', color: C_TEXT, minWidth: 230 }}>
         <div style={{ color: C_DIM, fontSize: 12, marginBottom: 7 }}>{label}</div>
         {items.map(row => (
           <div key={row.key} style={{ display: 'flex', justifyContent: 'space-between',
             gap: 14, fontSize: 12, padding: '1px 0' }}>
             <span style={{ color: row.color }}>{row.label}</span>
-            <span style={{ color: C_TEXT }}>{fmtUSD(r[row.key])}</span>
+            <span style={{ color: C_TEXT, display: 'flex', gap: 8 }}>
+              <span>{fmtUSD(r[row.key])}</span>
+              {showPct && <span style={{ color: C_DIM, minWidth: 38, textAlign: 'right' }}>
+                {((r[row.key] || 0) / total * 100).toFixed(1)}%
+              </span>}
+            </span>
           </div>
         ))}
         <div style={{ borderTop: `1px solid ${GDP_BORDER}`, marginTop: 6, paddingTop: 5,
@@ -326,7 +332,7 @@ const CategoryTooltip = makeTooltip([
   { key: 'borrowerInterest', label: 'Borrower interest', color: C_BORROW },
   { key: 'tradingFees',      label: 'Trading fees',      color: C_TRADING },
   { key: 'gdnRewards',       label: 'GDN rewards',       color: C_REWARDS },
-]);
+], { showPct: true });
 
 const VenueTooltip = makeTooltip([
   { key: 'aave',         label: 'AAVE',           color: C_AAVE },
@@ -346,6 +352,7 @@ export default function GdpTab() {
   const [view2, setView2]           = useState('30d');
   const [view3, setView3]           = useState('30d');
   const [view4, setView4]           = useState('30d');
+  const [view5, setView5]           = useState('30d');
   const [activeChains, setActiveChains] = useState(new Set(CHAIN_KEYS));
 
   const toggleChain = k => setActiveChains(prev => {
@@ -369,6 +376,27 @@ export default function GdpTab() {
   const { data: supplyData             }     = useUsdgSupply();
 
   const supplyByDate    = useMemo(() => buildSupplyByDate(supplyData?.history), [supplyData]);
+
+  // Percentage breakdown per category
+  const chart5 = useMemo(() => {
+    const base = view5 === '30d'
+      ? sliceView(daily, '30d')
+      : view5 === '12m'
+        ? aggregateBy(daily, 'month').slice(-12)
+        : aggregateBy(daily, 'quarter').slice(-4);
+    return base.map(r => {
+      const total = r.total || 1;
+      return {
+        displayDate: r.date ? fmtLabel(r, view5) : (r.label || r.period),
+        borrowerInterestPct: (r.borrowerInterest || 0) / total * 100,
+        tradingFeesPct:      (r.tradingFees      || 0) / total * 100,
+        gdnRewardsPct:       (r.gdnRewards       || 0) / total * 100,
+        // raw $ for tooltip
+        borrowerInterest: r.borrowerInterest, tradingFees: r.tradingFees,
+        gdnRewards: r.gdnRewards, total: r.total,
+      };
+    });
+  }, [daily, view5]);
   const chainGdnDaily   = useMemo(() => buildChainGdnDaily(supplyData?.history), [supplyData]);
   const chart4 = useMemo(() => {
     if (!chainGdnDaily.length) return [];
@@ -544,6 +572,39 @@ export default function GdpTab() {
           </ChartSection>
 
           {/* ── CHART 2: by venue, toggleable ── */}
+          {/* ── CHART 5: GDP by Category % ── */}
+          <ChartSection title="GDP by Category — Share of Total"
+            controls={<ViewToggle value={view5} onChange={setView5} />}>
+            <p style={{ color: C_DIM, fontSize: 12, margin: '0 0 10px' }}>
+              Each category as % of total GDP — shows compositional trend as trading and borrow activity grows relative to GDN rewards.
+            </p>
+            <div style={{ height: 260 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chart5} margin={{ top: 10, right: 16, left: 8, bottom: 5 }} barCategoryGap="18%">
+                  <CartesianGrid strokeDasharray="3 3" stroke={C_GRID} />
+                  <XAxis dataKey="displayDate" {...axisProps} />
+                  <YAxis stroke={C_DIM} tick={{ fill: C_DIM, fontSize: 11 }}
+                    tickFormatter={v => v.toFixed(0) + '%'} width={48} domain={[0, 100]} />
+                  <Tooltip
+                    cursor={{ fill: C_CURSOR }}
+                    contentStyle={{ background: '#ffffff', border: `1px solid ${GDP_BORDER}`,
+                      borderRadius: 8, boxShadow: '0 4px 12px rgba(25,40,47,0.12)', color: C_TEXT, minWidth: 230 }}
+                    labelStyle={{ color: C_DIM, fontSize: 12 }}
+                    formatter={(v, name) => {
+                      const labelMap = { borrowerInterestPct: 'Borrower interest', tradingFeesPct: 'Trading fees', gdnRewardsPct: 'GDN rewards' };
+                      return [v.toFixed(1) + '%', labelMap[name] || name];
+                    }} />
+                  <Legend iconType="square" wrapperStyle={{ color: C_DIM, fontSize: 12 }}
+                    formatter={v => ({ borrowerInterestPct: 'Borrower interest', tradingFeesPct: 'Trading fees', gdnRewardsPct: 'GDN rewards' }[v] || v)} />
+                  <Bar dataKey="borrowerInterestPct" stackId="pct" fill={C_BORROW}  isAnimationActive={false} />
+                  <Bar dataKey="tradingFeesPct"      stackId="pct" fill={C_TRADING} isAnimationActive={false} />
+                  <Bar dataKey="gdnRewardsPct"       stackId="pct" fill={C_REWARDS} radius={[3,3,0,0]} isAnimationActive={false} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </ChartSection>
+
+          {/* ── CHART 2: Trading Fees + Borrow Interest by Venue ── */}
           <ChartSection title="Trading Fees + Borrow Interest by Venue"
             controls={
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
