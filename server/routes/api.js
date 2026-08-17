@@ -527,18 +527,45 @@ router.get('/binance/paxg/depth-history', async (req, res) => {
   }
 });
 
-// GET /api/hood/volume-history - Accurate Hood (Uniswap) daily volume from GeckoTerminal OHLCV
-// Bypasses the unreliable pool-endpoint volume_usd.h24 field (returns 0 inconsistently)
+// GET /api/hood/volume-history - Hood (Uniswap) daily volume, DB-backed with live GeckoTerminal refresh
+// DB is the primary source (survives GeckoTerminal IP blocks); live data supplements and upserts.
 router.get('/hood/volume-history', async (req, res) => {
-  const cacheKey = 'hood_volume_history';
-  const cached = cache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < 60 * 60 * 1000) return res.json(cached.data);
   try {
-    const { getVolumeHistory } = require('../services/uniswapHood');
-    const history = await getVolumeHistory(100);
-    const data = { history };
-    cache.set(cacheKey, { data, timestamp: Date.now() });
-    res.json(data);
+    // Always serve from DB first — gives us resilient history regardless of GeckoTerminal availability
+    const dbRows = await dbPool.query(
+      'SELECT snapshot_date::text AS date, volume::float FROM hood_volume_history ORDER BY snapshot_date ASC'
+    );
+    const dbHistory = dbRows.rows;
+
+    // Attempt live refresh from GeckoTerminal (non-blocking — failure doesn't prevent response)
+    try {
+      const cacheKey = 'hood_volume_live';
+      const cached = cache.get(cacheKey);
+      if (!cached || Date.now() - cached.timestamp > 60 * 60 * 1000) {
+        const { getVolumeHistory } = require('../services/uniswapHood');
+        const live = await getVolumeHistory(100);
+        if (live.length > 0) {
+          cache.set(cacheKey, { data: live, timestamp: Date.now() });
+          // Upsert live data into DB for persistence
+          for (const row of live) {
+            await dbPool.query(
+              `INSERT INTO hood_volume_history (snapshot_date, volume)
+               VALUES ($1, $2)
+               ON CONFLICT (snapshot_date) DO UPDATE SET volume = EXCLUDED.volume`,
+              [row.date, row.volume]
+            );
+          }
+        }
+      }
+    } catch (liveErr) {
+      console.warn('[Hood] GeckoTerminal unavailable, serving from DB:', liveErr.message);
+    }
+
+    // Re-read from DB after potential upsert
+    const finalRows = await dbPool.query(
+      'SELECT snapshot_date::text AS date, volume::float FROM hood_volume_history ORDER BY snapshot_date ASC'
+    );
+    res.json({ history: finalRows.rows });
   } catch (err) {
     console.error('Error fetching Hood volume history:', err.message);
     res.status(500).json({ error: err.message });

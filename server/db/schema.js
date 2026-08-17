@@ -167,6 +167,12 @@ const SCHEMA_SQL = `
     UNIQUE(snapshot_date, chain)
   );
   CREATE INDEX IF NOT EXISTS idx_usdg_supply_date ON usdg_supply_history (snapshot_date DESC);
+
+  CREATE TABLE IF NOT EXISTS hood_volume_history (
+    snapshot_date DATE        NOT NULL PRIMARY KEY,
+    volume        NUMERIC(24, 2) NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
 `;
 
 async function setupDatabase() {

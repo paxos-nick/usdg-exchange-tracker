@@ -36,7 +36,8 @@ const POOLS = [
 async function fetchOhlcvBars(poolId, limit) {
   const { data } = await axios.get(
     `${GECKO}/networks/${NETWORK}/pools/${poolId}/ohlcv/day`,
-    { params: { limit }, headers: { Accept: 'application/json' }, timeout: 15000 }
+    { params: { limit }, headers: { Accept: 'application/json',
+      'User-Agent': 'Mozilla/5.0 (compatible; exchange-tracker/1.0)' }, timeout: 20000 }
   );
   return data.data?.attributes?.ohlcv_list || []; // each bar: [timestamp, open, high, low, close, volume]
 }
