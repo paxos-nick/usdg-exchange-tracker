@@ -363,9 +363,9 @@ export default function GdpTab() {
   const [activeVenues, setActiveVenues] = useState(new Set(VENUES));
   const [selectedVenue, setSelectedVenue] = useState('aave');
 
-  const { data: aaveHist,      loading: l1 } = useAaveUsdgHistory();
-  const { data: okxData,       loading: l2 } = useVolumeData('okx');
-  const { data: bullishTotal,  loading: l3 } = useVolumeData('bullish');
+  const { data: aaveHist,     loading: l1 } = useAaveUsdgHistory();
+  const { data: okxData,      loading: l2 } = useVolumeData('okx');
+  const { data: bullishTotal          }     = useVolumeData('bullish'); // non-blocking — takes ~19s on cold cache
   const { data: bullishPairs           }     = usePairVolumeData('bullish');
   const { data: krakenData             }     = useVolumeData('kraken');
   const { data: gateData               }     = useVolumeData('gate');
@@ -458,7 +458,7 @@ export default function GdpTab() {
     return next;
   });
 
-  const loading = l1 || l2 || l3; // l4 (bullishPairs) is non-blocking — renders without split data if slow
+  const loading = l1 || l2; // only block on AAVE + OKX; Bullish/others fill in non-blocking
 
   const axisProps = {
     stroke: C_DIM, tick: { fill: C_DIM, fontSize: 11 }, tickMargin: 8, interval: 'preserveStartEnd',
