@@ -1,4 +1,22 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Component } from 'react';
+
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error) { return { error }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 40, color: '#e7e9ea', background: '#0f1419', minHeight: '60vh' }}>
+          <h3 style={{ color: '#ef4444' }}>Tab failed to render</h3>
+          <pre style={{ color: '#ef4444', fontSize: 13, whiteSpace: 'pre-wrap', marginTop: 12 }}>
+            {this.state.error?.message}{'\n\n'}{this.state.error?.stack}
+          </pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import Dashboard from './components/Dashboard';
 import AggregatedExchangeChart from './components/AggregatedExchangeChart';
 import AssetVolumeChart from './components/AssetVolumeChart';
@@ -210,7 +228,7 @@ export default function App() {
       ) : activeTab === 'binance-paxg' ? (
         <BinancePaxgTab />
       ) : activeTab === 'usdg-gdp' ? (
-        <GdpTab />
+        <ErrorBoundary><GdpTab /></ErrorBoundary>
       ) : activeTab === 'aave-usdg' ? (
         <AaveUsdgTab />
       ) : (
