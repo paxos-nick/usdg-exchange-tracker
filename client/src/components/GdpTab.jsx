@@ -376,27 +376,6 @@ export default function GdpTab() {
   const { data: supplyData             }     = useUsdgSupply();
 
   const supplyByDate    = useMemo(() => buildSupplyByDate(supplyData?.history), [supplyData]);
-
-  // Percentage breakdown per category
-  const chart5 = useMemo(() => {
-    const base = view5 === '30d'
-      ? sliceView(daily, '30d')
-      : view5 === '12m'
-        ? aggregateBy(daily, 'month').slice(-12)
-        : aggregateBy(daily, 'quarter').slice(-4);
-    return base.map(r => {
-      const total = r.total || 1;
-      return {
-        displayDate: r.date ? fmtLabel(r, view5) : (r.label || r.period),
-        borrowerInterestPct: (r.borrowerInterest || 0) / total * 100,
-        tradingFeesPct:      (r.tradingFees      || 0) / total * 100,
-        gdnRewardsPct:       (r.gdnRewards       || 0) / total * 100,
-        // raw $ for tooltip
-        borrowerInterest: r.borrowerInterest, tradingFees: r.tradingFees,
-        gdnRewards: r.gdnRewards, total: r.total,
-      };
-    });
-  }, [daily, view5]);
   const chainGdnDaily   = useMemo(() => buildChainGdnDaily(supplyData?.history), [supplyData]);
   const chart4 = useMemo(() => {
     if (!chainGdnDaily.length) return [];
@@ -425,6 +404,26 @@ export default function GdpTab() {
       breakdown = { borrowerInterest: 0, gdnRewards: 0, tradingFees: venueTotal, total: venueTotal };
     return { ...breakdown, displayDate: fmtLabel(r, view3) };
   }), [daily, view3, selectedVenue]);
+
+  // Percentage breakdown per category — declared AFTER daily/chart1-3 to avoid minifier TDZ
+  const chart5 = useMemo(() => {
+    const base = view5 === '30d'
+      ? sliceView(daily, '30d')
+      : view5 === '12m'
+        ? aggregateBy(daily, 'month').slice(-12)
+        : aggregateBy(daily, 'quarter').slice(-4);
+    return base.map(r => {
+      const total = r.total || 1;
+      return {
+        displayDate: r.date ? fmtLabel(r, view5) : (r.label || r.period),
+        borrowerInterestPct: (r.borrowerInterest || 0) / total * 100,
+        tradingFeesPct:      (r.tradingFees      || 0) / total * 100,
+        gdnRewardsPct:       (r.gdnRewards       || 0) / total * 100,
+        borrowerInterest: r.borrowerInterest, tradingFees: r.tradingFees,
+        gdnRewards: r.gdnRewards, total: r.total,
+      };
+    });
+  }, [daily, view5]);
 
   // Totals for the first chart's window
   // ARR = trailing 7-day average × 365 (smooths daily noise)
