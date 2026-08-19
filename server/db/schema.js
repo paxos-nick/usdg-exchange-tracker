@@ -173,6 +173,15 @@ const SCHEMA_SQL = `
     volume        NUMERIC(24, 2) NOT NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
+
+  CREATE TABLE IF NOT EXISTS cex_daily_volume (
+    snapshot_date DATE        NOT NULL,
+    exchange      VARCHAR(50) NOT NULL,
+    volume        NUMERIC(24, 2) NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (snapshot_date, exchange)
+  );
+  CREATE INDEX IF NOT EXISTS idx_cex_volume_exchange ON cex_daily_volume (exchange, snapshot_date DESC);
 `;
 
 async function setupDatabase() {

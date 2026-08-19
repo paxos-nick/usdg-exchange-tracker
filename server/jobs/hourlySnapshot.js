@@ -196,6 +196,27 @@ async function runSnapshot() {
       }
     }
 
+    // Daily: log CEX exchange volumes to Postgres for instant serving
+    if (isDailyRun) {
+      const CEX_EXCHANGES = ['kraken','bullish','gate','kucoin','bitmart','okx','bitstamp'];
+      for (const exName of CEX_EXCHANGES) {
+        try {
+          const svc = require(`../services/${exName}`);
+          const result = await svc.getAggregatedVolume();
+          const today2 = new Date().toISOString().split('T')[0];
+          const todayVol = result.dailyVolume?.find(d => d.date === today2);
+          if (!todayVol) continue;
+          await pool.query(
+            'INSERT INTO cex_daily_volume(snapshot_date,exchange,volume) VALUES($1,$2,$3) ON CONFLICT(snapshot_date,exchange) DO UPDATE SET volume=EXCLUDED.volume',
+            [today2, exName, todayVol.volume]
+          );
+        } catch (err) {
+          console.error(`[Snapshot] CEX volume log failed for ${exName}:`, err.message);
+        }
+      }
+      console.log('[Snapshot] CEX daily volumes logged to Postgres');
+    }
+
     // Hourly depth snapshot — runs every hour for all runs (not just daily)
     try {
       const snappedAt = new Date();

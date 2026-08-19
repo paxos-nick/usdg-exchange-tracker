@@ -53,24 +53,62 @@ router.get('/exchanges', (req, res) => {
 });
 
 // GET /api/volume/:exchange - Get volume for specific exchange
+// Serves from Postgres cex_daily_volume (instant); refreshes from live API in background.
 router.get('/volume/:exchange', async (req, res) => {
   const { exchange } = req.params;
-  const cacheKey = `volume_${exchange}`;
+  const exchangeKey = exchange.toLowerCase();
+  const cacheKey = `volume_${exchangeKey}`;
 
-  // Check cache first
-  const cached = getCached(cacheKey);
-  if (cached) {
-    return res.json(cached);
-  }
-
-  const service = services[exchange.toLowerCase()];
+  const service = services[exchangeKey];
   if (!service) {
     return res.status(400).json({ error: `Unknown exchange: ${exchange}` });
   }
 
+  // 1. Try in-memory cache first (sub-ms)
+  const cached = getCached(cacheKey);
+  if (cached) return res.json(cached);
+
+  // 2. Serve from Postgres (fast — ms not seconds)
+  try {
+    const dbRows = await dbPool.query(
+      'SELECT snapshot_date::text AS date, volume::float FROM cex_daily_volume WHERE exchange=$1 ORDER BY snapshot_date ASC',
+      [exchangeKey]
+    );
+    if (dbRows.rows.length > 0) {
+      const data = { exchange: exchangeKey, pairs: [], dailyVolume: dbRows.rows };
+      setCache(cacheKey, data);
+      res.json(data);
+      // Refresh DB in background if data is stale (last entry older than 1 day)
+      const lastDate = dbRows.rows[dbRows.rows.length - 1]?.date;
+      const today = new Date().toISOString().split('T')[0];
+      if (lastDate < today) {
+        service.getAggregatedVolume().then(async live => {
+          for (const day of live.dailyVolume) {
+            await dbPool.query(
+              'INSERT INTO cex_daily_volume(snapshot_date,exchange,volume) VALUES($1,$2,$3) ON CONFLICT(snapshot_date,exchange) DO UPDATE SET volume=EXCLUDED.volume',
+              [day.date, exchangeKey, day.volume]
+            ).catch(() => {});
+          }
+          cache.delete(cacheKey); // bust cache so next request gets fresh data
+        }).catch(() => {});
+      }
+      return;
+    }
+  } catch (dbErr) {
+    console.error(`[${exchangeKey}] DB read error:`, dbErr.message);
+  }
+
+  // 3. Fallback: fetch from live API, store in DB
   try {
     const data = await service.getAggregatedVolume();
     setCache(cacheKey, data);
+    // Persist to DB
+    for (const day of data.dailyVolume) {
+      await dbPool.query(
+        'INSERT INTO cex_daily_volume(snapshot_date,exchange,volume) VALUES($1,$2,$3) ON CONFLICT(snapshot_date,exchange) DO UPDATE SET volume=EXCLUDED.volume',
+        [day.date, exchangeKey, day.volume]
+      ).catch(() => {});
+    }
     res.json(data);
   } catch (err) {
     console.error(`Error fetching ${exchange} volume:`, err);
