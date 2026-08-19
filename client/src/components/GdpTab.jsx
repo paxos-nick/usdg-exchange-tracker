@@ -431,7 +431,7 @@ export default function GdpTab() {
   const arr = useMemo(() => {
     const last7 = daily.slice(-7).filter(r => r.total > 0);
     if (!last7.length) return null;
-    const n = last7.length;
+    const count = last7.length; // named 'count' not 'n' to avoid minifier collision with NIM_APY→N
     const sum = last7.reduce((acc, r) => ({
       borrowerInterest: acc.borrowerInterest + (r.borrowerInterest || 0),
       tradingFees:      acc.tradingFees      + (r.tradingFees      || 0),
@@ -439,10 +439,10 @@ export default function GdpTab() {
       total:            acc.total            + (r.total            || 0),
     }), { borrowerInterest: 0, tradingFees: 0, gdnRewards: 0, total: 0 });
     return {
-      borrowerInterest: sum.borrowerInterest / n * 365,
-      tradingFees:      sum.tradingFees      / n * 365,
-      gdnRewards:       sum.gdnRewards       / n * 365,
-      total:            sum.total            / n * 365,
+      borrowerInterest: sum.borrowerInterest / count * 365,
+      tradingFees:      sum.tradingFees      / count * 365,
+      gdnRewards:       sum.gdnRewards       / count * 365,
+      total:            sum.total            / count * 365,
     };
   }, [daily]);
 
