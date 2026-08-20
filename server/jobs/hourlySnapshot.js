@@ -176,16 +176,24 @@ async function runSnapshot() {
       try {
         const today2 = new Date().toISOString().split('T')[0];
         const paxosData = await aaveV4Service.getPaxosHubDataAtBlock(blockNum);
+        // paxosMerklRewards comes from the same merklData fetched above for the Core Hub
+        const paxosMerkl    = merklData?.paxosDailyRewards ?? null;
+        const paxosHubApr   = merklData?.paxosHubApr ?? null;
+        const paxosHubTvl   = merklData?.paxosHubTvl ?? null;
         await pool.query(
           `INSERT INTO aave_usdg_paxos_history
-             (snapshot_date, total_debt, borrow_apy, daily_interest, total_supply, supply_apy, block_number)
-           VALUES ($1,$2,$3,$4,$5,$6,$7)
+             (snapshot_date, total_debt, borrow_apy, daily_interest, total_supply, supply_apy, block_number,
+              merkl_daily_rewards, merkl_hub_apr, merkl_hub_tvl)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
            ON CONFLICT (snapshot_date) DO UPDATE SET
              total_debt=EXCLUDED.total_debt, borrow_apy=EXCLUDED.borrow_apy,
              daily_interest=EXCLUDED.daily_interest, total_supply=EXCLUDED.total_supply,
-             supply_apy=EXCLUDED.supply_apy, block_number=EXCLUDED.block_number`,
+             supply_apy=EXCLUDED.supply_apy, block_number=EXCLUDED.block_number,
+             merkl_daily_rewards=EXCLUDED.merkl_daily_rewards,
+             merkl_hub_apr=EXCLUDED.merkl_hub_apr, merkl_hub_tvl=EXCLUDED.merkl_hub_tvl`,
           [today2, paxosData.totalVariableDebt, paxosData.variableBorrowApy,
-           paxosData.dailyInterestCost, paxosData.totalSupply, paxosData.organicSupplyApy, blockNum]
+           paxosData.dailyInterestCost, paxosData.totalSupply, paxosData.organicSupplyApy, blockNum,
+           paxosMerkl, paxosHubApr, paxosHubTvl]
         );
         console.log(`[Snapshot] Paxos Hub logged: $${(paxosData.totalVariableDebt / 1e6).toFixed(2)}M @ ${paxosData.variableBorrowApy.toFixed(2)}% APY`);
       } catch (err) {

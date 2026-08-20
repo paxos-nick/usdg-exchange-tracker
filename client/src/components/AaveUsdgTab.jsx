@@ -614,8 +614,27 @@ export default function AaveUsdgTab() {
     </div>
   );
 
-  const { totalVariableDebt, variableBorrowApy, dailyInterestCost,
-          totalSupply, organicSupplyApy, idleUsdg } = live || {};
+  // Combine Core Hub + Paxos Hub totals for aggregate display
+  const coreDebt     = live?.totalVariableDebt || 0;
+  const paxosDebt    = paxosLive?.totalVariableDebt || 0;
+  const totalVariableDebt = coreDebt + paxosDebt;
+
+  const coreSupply   = live?.totalSupply || 0;
+  const paxosSupply  = paxosLive?.totalSupply || 0;
+  const totalSupply  = coreSupply + paxosSupply;
+
+  const coreDailyInt = live?.dailyInterestCost || 0;
+  const paxosDailyInt= paxosLive?.dailyInterestCost || 0;
+  const dailyInterestCost = coreDailyInt + paxosDailyInt;
+
+  // Borrow APY: weighted average across both hubs
+  const variableBorrowApy = totalVariableDebt > 0
+    ? ((live?.variableBorrowApy || 0) * coreDebt + (paxosLive?.variableBorrowApy || 0) * paxosDebt) / totalVariableDebt
+    : (live?.variableBorrowApy || 0);
+
+  const idleUsdg = (live?.idleUsdg || 0) + (paxosLive?.idleUsdg || 0);
+  const utilization = totalSupply > 0 ? totalVariableDebt / totalSupply : 0;
+  const organicSupplyApy = variableBorrowApy * utilization;
 
   // Total supply APY = Merkl daily rewards annualised over total supply.
   // This is the full rate (organic already included), not an add-on.
@@ -637,7 +656,7 @@ export default function AaveUsdgTab() {
       <h2>USDG — Aave v4</h2>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap', marginTop: -8, marginBottom: 24 }}>
         <p style={{ color: '#71767b', margin: 0 }}>
-          USDG on Aave v4 (Ethereum mainnet) · live data refreshes every 60s
+          USDG on Aave v4 (Ethereum mainnet) — Core Hub + Paxos Hub combined · live data refreshes every 60s
         </p>
         <DownloadControl chartData={chartData} />
       </div>
@@ -648,7 +667,7 @@ export default function AaveUsdgTab() {
           <section className="wow-section">
             <h3 style={{ margin: '0 0 10px', fontSize: 13, color: '#71767b', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Supply</h3>
             <div className="comparison-grid">
-              <StatCard label="Total USDG Supplied" value={formatUSD(totalSupply)} sub="supply TVL on Main spoke" color={SUPPLY_COLOR} />
+              <StatCard label="Total USDG Supplied" value={formatUSD(totalSupply)} sub="Core Hub + Paxos Hub combined" color={SUPPLY_COLOR} />
               <StatCard label="Base Supply Rate" value={organicSupplyApy != null ? organicSupplyApy.toFixed(2) + '%' : '—'}
                 sub="from borrow interest (APY × utilization)" color={APY_GREEN} />
               <StatCard label="Total Supply APY" value={totalSupplyApy != null ? totalSupplyApy.toFixed(2) + '%' : '—'}
@@ -682,24 +701,6 @@ export default function AaveUsdgTab() {
       )}
 
       {histLoading && !chartData.length && <div className="loading">Loading historical data...</div>}
-
-      {/* ── PAXOS HUB ── */}
-      {paxosLive && (
-        <section className="wow-section" style={{ marginTop: 24, borderColor: '#7c3aed' }}>
-          <h3 style={{ margin: '0 0 14px', color: '#a78bfa', fontSize: 15 }}>
-            USDG Paxos Hub
-            <span style={{ marginLeft: 8, fontSize: 11, color: '#71767b', fontWeight: 400 }}>
-              0x62d631...90368 · separate hub
-            </span>
-          </h3>
-          <div className="comparison-grid">
-            <StatCard label="Total USDG Supplied" value={formatUSD(paxosLive.totalSupply)} sub="Paxos Hub total" color="#a78bfa" />
-            <StatCard label="Total USDG Borrowed" value={formatUSD(paxosLive.totalVariableDebt)} sub="across Paxos Hub" color={AAVE_PURPLE} />
-            <StatCard label="Borrow APY" value={paxosLive.variableBorrowApy != null ? paxosLive.variableBorrowApy.toFixed(2) + '%' : '—'} sub="variable rate" color={APY_GREEN} />
-            <StatCard label="Daily Interest" value={formatUSD(paxosLive.dailyInterestCost)} sub="debt × rate ÷ 365" />
-          </div>
-        </section>
-      )}
 
       <section className="wow-section" style={{ background: 'transparent', border: '1px solid #2f3542', borderRadius: 8, padding: '16px 20px', marginTop: 8 }}>
         <p style={{ color: '#71767b', fontSize: 13, margin: 0, lineHeight: 1.6 }}>

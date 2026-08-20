@@ -35,16 +35,24 @@ async function getUsdgDailyRewards() {
   // The Hub campaign is the primary Paxos-funded campaign.
   // Merkl's API rounds the APR (returns 6.0 when the actual Aave-shown target is 6.18%).
   // Update CAMPAIGN_TARGET_APR here when a new campaign with a different target launches.
-  const CAMPAIGN_TARGET_APR = 6.18;
+  const CAMPAIGN_TARGET_APR = 6.18; // both hubs target same total supply APY
 
-  const hubCampaign = liveUsdgSupply.find(opp =>
-    opp.type === 'AAVE_V4_HUB_SUPPLY' || opp.type === 'AAVE_V4_HUB_NET_LENDING'
+  // Core Hub = "Aave V4 Core Hub"; Paxos Hub = "Aave V4 Paxos Hub"
+  const coreCampaign  = liveUsdgSupply.find(opp =>
+    (opp.type === 'AAVE_V4_HUB_SUPPLY' || opp.type === 'AAVE_V4_HUB_NET_LENDING') &&
+    (opp.name?.includes('Core') || !opp.name?.includes('Paxos'))
+  );
+  const paxosCampaign = liveUsdgSupply.find(opp =>
+    opp.type === 'AAVE_V4_HUB_NET_LENDING' && opp.name?.includes('Paxos')
   );
 
   return {
     totalDailyRewards,
-    hubApr: hubCampaign ? CAMPAIGN_TARGET_APR : null,  // authoritative target, not Merkl's rounded value
-    hubTvl: hubCampaign?.tvl ?? null,   // Merkl-tracked eligible TVL at time of query
+    hubApr:              coreCampaign  ? CAMPAIGN_TARGET_APR : null,
+    hubTvl:              coreCampaign?.tvl ?? null,
+    paxosDailyRewards:   paxosCampaign?.dailyRewards ?? null,
+    paxosHubApr:         paxosCampaign ? CAMPAIGN_TARGET_APR : null,
+    paxosHubTvl:         paxosCampaign?.tvl ?? null,
     breakdown: liveUsdgSupply.map(opp => ({
       name: opp.name,
       type: opp.type,
