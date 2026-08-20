@@ -482,6 +482,46 @@ export function useUsdgSupply() {
   return { data, loading, error, refetch: fetchData };
 }
 
+export function useAaveUsdgPaxos() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true); setError(null);
+      const response = await fetch('/api/aave/usdg/paxos');
+      if (!response.ok) throw new Error(response.statusText);
+      setData(await response.json());
+      setLastUpdated(new Date());
+    } catch (err) { setError(err.message); }
+    finally { setLoading(false); }
+  }, []);
+  useEffect(() => {
+    fetchData();
+    const id = setInterval(fetchData, 60 * 1000);
+    return () => clearInterval(id);
+  }, [fetchData]);
+  return { data, loading, error, lastUpdated, refetch: fetchData };
+}
+
+export function useAaveUsdgPaxosHistory() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true); setError(null);
+      const response = await fetch('/api/aave/usdg/paxos/history');
+      if (!response.ok) throw new Error(response.statusText);
+      setData(await response.json());
+    } catch (err) { setError(err.message); }
+    finally { setLoading(false); }
+  }, []);
+  useEffect(() => { fetchData(); }, [fetchData]);
+  return { data, loading, error, refetch: fetchData };
+}
+
 export function useAaveUsdgHistory() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);

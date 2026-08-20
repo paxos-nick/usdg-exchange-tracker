@@ -610,6 +610,37 @@ router.get('/hood/volume-history', async (req, res) => {
   }
 });
 
+// GET /api/aave/usdg/paxos - Live Paxos Hub data
+router.get('/aave/usdg/paxos', async (req, res) => {
+  const cacheKey = 'aave_usdg_paxos';
+  const entry = cache.get(cacheKey);
+  if (entry && Date.now() - entry.timestamp < 60 * 1000) return res.json(entry.data);
+  try {
+    const { getPaxosHubData } = require('../services/aaveV4');
+    const data = await getPaxosHubData();
+    cache.set(cacheKey, { data, timestamp: Date.now() });
+    res.json(data);
+  } catch (err) {
+    console.error('Paxos Hub error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/aave/usdg/paxos/history - Historical Paxos Hub data
+router.get('/aave/usdg/paxos/history', async (req, res) => {
+  try {
+    const result = await dbPool.query(
+      `SELECT snapshot_date::text AS date, total_debt::float, borrow_apy::float,
+              daily_interest::float, total_supply::float, supply_apy::float
+       FROM aave_usdg_paxos_history ORDER BY snapshot_date ASC`
+    );
+    res.json({ history: result.rows });
+  } catch (err) {
+    console.error('Paxos Hub history error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/usdg/supply - Live circulating supply per chain + historical snapshots
 router.get('/usdg/supply', async (req, res) => {
   try {

@@ -4,7 +4,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, ReferenceLine, ReferenceArea
 } from 'recharts';
-import { useAaveUsdg, useAaveUsdgHistory } from '../hooks/useVolumeData';
+import { useAaveUsdg, useAaveUsdgHistory, useAaveUsdgPaxos } from '../hooks/useVolumeData';
 
 const AAVE_PURPLE = '#b6509e';
 const APY_GREEN   = '#10b981';
@@ -510,6 +510,7 @@ function CombinedTooltip({ active, payload, label }) {
 export default function AaveUsdgTab() {
   const { data: live, loading: liveLoading, error: liveError, lastUpdated } = useAaveUsdg();
   const { data: hist, loading: histLoading } = useAaveUsdgHistory();
+  const { data: paxosLive } = useAaveUsdgPaxos();
 
   const history = hist?.history || [];
   // Merkl daily rewards are captured sparsely (API lookback limits). Once the campaign
@@ -681,6 +682,24 @@ export default function AaveUsdgTab() {
       )}
 
       {histLoading && !chartData.length && <div className="loading">Loading historical data...</div>}
+
+      {/* ── PAXOS HUB ── */}
+      {paxosLive && (
+        <section className="wow-section" style={{ marginTop: 24, borderColor: '#7c3aed' }}>
+          <h3 style={{ margin: '0 0 14px', color: '#a78bfa', fontSize: 15 }}>
+            USDG Paxos Hub
+            <span style={{ marginLeft: 8, fontSize: 11, color: '#71767b', fontWeight: 400 }}>
+              0x62d631...90368 · separate hub
+            </span>
+          </h3>
+          <div className="comparison-grid">
+            <StatCard label="Total USDG Supplied" value={formatUSD(paxosLive.totalSupply)} sub="Paxos Hub total" color="#a78bfa" />
+            <StatCard label="Total USDG Borrowed" value={formatUSD(paxosLive.totalVariableDebt)} sub="across Paxos Hub" color={AAVE_PURPLE} />
+            <StatCard label="Borrow APY" value={paxosLive.variableBorrowApy != null ? paxosLive.variableBorrowApy.toFixed(2) + '%' : '—'} sub="variable rate" color={APY_GREEN} />
+            <StatCard label="Daily Interest" value={formatUSD(paxosLive.dailyInterestCost)} sub="debt × rate ÷ 365" />
+          </div>
+        </section>
+      )}
 
       <section className="wow-section" style={{ background: 'transparent', border: '1px solid #2f3542', borderRadius: 8, padding: '16px 20px', marginTop: 8 }}>
         <p style={{ color: '#71767b', fontSize: 13, margin: 0, lineHeight: 1.6 }}>

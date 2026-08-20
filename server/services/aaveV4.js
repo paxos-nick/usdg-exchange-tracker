@@ -21,6 +21,15 @@ const CORE_HUB = '0xCca852Bc40e560adC3b1Cc58CA5b55638ce826c9';
 // USDG assetId in CORE_HUB (index 8, verified on-chain)
 const USDG_ASSET_ID = 8;
 
+// Aave v4 PAXOS_HUB — separate "USDG Hub" with USDG as assetId 3
+// Hub address decoded from https://pro.aave.com/explore/hub/MTo6MHg2MmQ2...
+const PAXOS_HUB = '0x62d63197660c080236193CA60b70E49A08E90368';
+const PAXOS_USDG_ASSET_ID = 3;
+
+// Selectors shared by both hubs
+const SEL_GET_ASSET_TOTAL_OWED  = '0x0752c44c'; // getAssetTotalOwed(uint256)
+const SEL_GET_ASSET_LIQUIDITY   = '0x9f9b1990'; // getAssetLiquidity(uint256)
+
 // v4 Spokes that have USDG borrowing (verified on-chain with reserveIds)
 const USDG_SPOKES = [
   { name: 'Main',        address: '0x94e7A5dCbE816e498b89aB752661904E2F56c485', reserveId: 11 },
@@ -161,9 +170,63 @@ async function getUsdgReserveData() {
   };
 }
 
+// Get live USDG data from the Paxos Hub (single-hub, no separate spokes)
+async function getPaxosHubData() {
+  const drawnRateHex = await rpcCall('eth_call', [
+    { to: PAXOS_HUB, data: SEL_GET_ASSET_DRAWN_RATE + hex32(PAXOS_USDG_ASSET_ID) }, 'latest'
+  ]);
+  const drawnRate = BigInt('0x' + drawnRateHex.slice(2));
+  const ratePerSec = Number(drawnRate) / Number(RAY) / SECONDS_PER_YEAR;
+  const variableBorrowApy = (Math.pow(1 + ratePerSec, SECONDS_PER_YEAR) - 1) * 100;
+  const annualRate = Number(drawnRate) / Number(RAY);
+
+  const [owedHex, liquidityHex] = await Promise.all([
+    rpcCall('eth_call', [{ to: PAXOS_HUB, data: SEL_GET_ASSET_TOTAL_OWED  + hex32(PAXOS_USDG_ASSET_ID) }, 'latest']),
+    rpcCall('eth_call', [{ to: PAXOS_HUB, data: SEL_GET_ASSET_LIQUIDITY    + hex32(PAXOS_USDG_ASSET_ID) }, 'latest']),
+  ]);
+
+  const totalVariableDebt = Number(BigInt('0x' + owedHex.slice(2))) / Math.pow(10, USDG_DECIMALS);
+  const idleUsdg          = Number(BigInt('0x' + liquidityHex.slice(2))) / Math.pow(10, USDG_DECIMALS);
+  const totalSupply       = totalVariableDebt + idleUsdg;
+  const utilization       = totalSupply > 0 ? totalVariableDebt / totalSupply : 0;
+  const dailyInterestCost = totalVariableDebt * annualRate / 365;
+  const organicSupplyApy  = variableBorrowApy * utilization;
+
+  return { totalVariableDebt, variableBorrowApy, dailyInterestCost, totalSupply, organicSupplyApy, utilization, idleUsdg };
+}
+
+// Get Paxos Hub data at a specific block (for daily snapshots)
+async function getPaxosHubDataAtBlock(blockNumber) {
+  const blockHex = '0x' + blockNumber.toString(16);
+
+  const drawnRateHex = await rpcCall('eth_call', [
+    { to: PAXOS_HUB, data: SEL_GET_ASSET_DRAWN_RATE + hex32(PAXOS_USDG_ASSET_ID) }, blockHex
+  ]);
+  const drawnRate = BigInt('0x' + drawnRateHex.slice(2));
+  const ratePerSec = Number(drawnRate) / Number(RAY) / SECONDS_PER_YEAR;
+  const variableBorrowApy = (Math.pow(1 + ratePerSec, SECONDS_PER_YEAR) - 1) * 100;
+  const annualRate = Number(drawnRate) / Number(RAY);
+
+  const [owedHex, liquidityHex] = await Promise.all([
+    rpcCall('eth_call', [{ to: PAXOS_HUB, data: SEL_GET_ASSET_TOTAL_OWED  + hex32(PAXOS_USDG_ASSET_ID) }, blockHex]),
+    rpcCall('eth_call', [{ to: PAXOS_HUB, data: SEL_GET_ASSET_LIQUIDITY    + hex32(PAXOS_USDG_ASSET_ID) }, blockHex]),
+  ]);
+
+  const totalVariableDebt = Number(BigInt('0x' + owedHex.slice(2))) / Math.pow(10, USDG_DECIMALS);
+  const idleUsdg          = Number(BigInt('0x' + liquidityHex.slice(2))) / Math.pow(10, USDG_DECIMALS);
+  const totalSupply       = totalVariableDebt + idleUsdg;
+  const utilization       = totalSupply > 0 ? totalVariableDebt / totalSupply : 0;
+  const dailyInterestCost = totalVariableDebt * annualRate / 365;
+  const organicSupplyApy  = variableBorrowApy * utilization;
+
+  return { totalVariableDebt, variableBorrowApy, dailyInterestCost, totalSupply, organicSupplyApy, utilization, idleUsdg, blockNumber };
+}
+
 module.exports = {
   getUsdgReserveData,
   getUsdgReserveDataAtBlock,
   getCurrentBlockInfo,
-  estimateBlockForDate
+  estimateBlockForDate,
+  getPaxosHubData,
+  getPaxosHubDataAtBlock,
 };

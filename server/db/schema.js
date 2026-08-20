@@ -176,6 +176,18 @@ const SCHEMA_SQL = `
   );
   ALTER TABLE hood_volume_history ADD COLUMN IF NOT EXISTS fee_revenue NUMERIC(24, 6);
 
+  CREATE TABLE IF NOT EXISTS aave_usdg_paxos_history (
+    id              SERIAL PRIMARY KEY,
+    snapshot_date   DATE        NOT NULL UNIQUE,
+    total_debt      NUMERIC(24,6) NOT NULL,
+    borrow_apy      NUMERIC(10,6) NOT NULL,
+    daily_interest  NUMERIC(20,6) NOT NULL,
+    total_supply    NUMERIC(24,6),
+    supply_apy      NUMERIC(10,6),
+    block_number    BIGINT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
   CREATE TABLE IF NOT EXISTS cex_daily_volume (
     snapshot_date DATE        NOT NULL,
     exchange      VARCHAR(50) NOT NULL,

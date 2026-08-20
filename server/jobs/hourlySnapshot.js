@@ -171,6 +171,26 @@ async function runSnapshot() {
       } catch (err) {
         console.error('[Snapshot] Failed to log Aave v4 USDG:', err.message);
       }
+
+      // Paxos Hub daily snapshot
+      try {
+        const today2 = new Date().toISOString().split('T')[0];
+        const paxosData = await aaveV4Service.getPaxosHubDataAtBlock(blockNum);
+        await pool.query(
+          `INSERT INTO aave_usdg_paxos_history
+             (snapshot_date, total_debt, borrow_apy, daily_interest, total_supply, supply_apy, block_number)
+           VALUES ($1,$2,$3,$4,$5,$6,$7)
+           ON CONFLICT (snapshot_date) DO UPDATE SET
+             total_debt=EXCLUDED.total_debt, borrow_apy=EXCLUDED.borrow_apy,
+             daily_interest=EXCLUDED.daily_interest, total_supply=EXCLUDED.total_supply,
+             supply_apy=EXCLUDED.supply_apy, block_number=EXCLUDED.block_number`,
+          [today2, paxosData.totalVariableDebt, paxosData.variableBorrowApy,
+           paxosData.dailyInterestCost, paxosData.totalSupply, paxosData.organicSupplyApy, blockNum]
+        );
+        console.log(`[Snapshot] Paxos Hub logged: $${(paxosData.totalVariableDebt / 1e6).toFixed(2)}M @ ${paxosData.variableBorrowApy.toFixed(2)}% APY`);
+      } catch (err) {
+        console.error('[Snapshot] Failed to log Paxos Hub:', err.message);
+      }
     }
 
     // Daily: USDG circulating supply by chain
