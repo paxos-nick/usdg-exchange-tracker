@@ -54,6 +54,42 @@ const POOLS = [
     venue:   'Uniswap v3',
     feeRate: 0.0005, // 0.05% (5 bps) — confirmed via fee() on-chain
   },
+  {
+    id:      '0x02175608F1b5E6b5ed221cCFdC7Be197D111D915',
+    name:    'USDG/USO',
+    type:    'volatile',
+    venue:   'Uniswap v3',
+    feeRate: 0.003, // 0.3% (30 bps) — confirmed via fee() on-chain
+  },
+  // ── Additional v4 pools ───────────────────────────────────────────────────
+  {
+    id:      '0xa92a3df27a00a276183ff7265fd8affa11df1fe8bb23ddfaf13f6c879a3f818b',
+    name:    'CASHCAT/USDG',
+    type:    'volatile',
+    venue:   'Uniswap v4',
+    feeRate: 0.00269, // 0.269% (26.9 bps) — from GeckoTerminal pool name
+  },
+  {
+    id:      '0x77c25b9386d47de62e0155c393696e9f43f7e6d036c6ca52f66735ccbb8808a7',
+    name:    'USDG/WETH 0.3%',
+    type:    'volatile',
+    venue:   'Uniswap v4',
+    feeRate: 0.003, // 0.3% (30 bps) — from GeckoTerminal pool name
+  },
+  {
+    id:      '0x4be9657ec9002e528f4f17a5c43edc525a07f888f7b180c2afbf75e096c4f38a',
+    name:    'PONS/USDG',
+    type:    'volatile',
+    venue:   'Uniswap v4',
+    feeRate: 0.003, // 0.3% (30 bps) — from GeckoTerminal pool name
+  },
+  {
+    id:      '0xfcfae8fa0bd6da961bcf5d990f27690932deac4f093e99bf3e871691c6586593',
+    name:    'USDG/WETH 0.05%',
+    type:    'volatile',
+    venue:   'Uniswap v4',
+    feeRate: 0.0005, // 0.05% (5 bps) — from GeckoTerminal pool name
+  },
 ];
 
 async function fetchOhlcvBars(poolId, limit) {
