@@ -4,7 +4,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, ReferenceLine, ReferenceArea
 } from 'recharts';
-import { useAaveUsdg, useAaveUsdgHistory, useAaveUsdgPaxos } from '../hooks/useVolumeData';
+import { useAaveUsdg, useAaveUsdgHistory, useAaveUsdgPaxos, useAaveUsdgPaxosHistory } from '../hooks/useVolumeData';
 
 const AAVE_PURPLE = '#b6509e';
 const APY_GREEN   = '#10b981';
@@ -511,6 +511,13 @@ export default function AaveUsdgTab() {
   const { data: live, loading: liveLoading, error: liveError, lastUpdated } = useAaveUsdg();
   const { data: hist, loading: histLoading } = useAaveUsdgHistory();
   const { data: paxosLive } = useAaveUsdgPaxos();
+  const { data: paxosHist } = useAaveUsdgPaxosHistory(); // non-blocking
+
+  // Build date-keyed lookup for Paxos Hub history to merge into chartData
+  const paxosByDate = {};
+  for (const row of (paxosHist?.history || [])) {
+    paxosByDate[row.date] = row;
+  }
 
   const history = hist?.history || [];
   // Merkl daily rewards are captured sparsely (API lookback limits). Once the campaign
@@ -519,27 +526,40 @@ export default function AaveUsdgTab() {
   // day stay null → treated as no out-of-pocket campaign yet.
   let _lastMerkl = null;
   const chartData = history.map(row => {
-    const totalDebt   = row.total_debt;
-    const totalSupply = row.total_supply ?? null;
-    // Treat 0 as null: 0 daily rewards means no active campaign (same as missing data).
-    // This prevents a 0 from being forward-filled into subsequent days and showing 0% APY.
-    const rawMerkl = row.merkl_daily_rewards || null;
-    if (rawMerkl != null) _lastMerkl = rawMerkl;
-    const merklRewards = rawMerkl != null ? rawMerkl : _lastMerkl; // null until first tracked day
+    // Merge Paxos Hub row for this date (null if Paxos Hub not yet logging)
+    const paxos = paxosByDate[row.date] || null;
 
-    // Idle USDG = supply that isn't currently borrowed. This is what earns the NIM share.
+    const totalDebt   = (row.total_debt || 0) + (paxos?.total_debt || 0);
+    const totalSupply = row.total_supply != null || paxos?.total_supply != null
+      ? (row.total_supply || 0) + (paxos?.total_supply || 0)
+      : null;
+
+    // Merkl: sum both hubs. Treat 0 as null (no active campaign).
+    const coreRawMerkl  = row.merkl_daily_rewards || null;
+    const paxosRawMerkl = paxos?.merkl_daily_rewards || null;
+    const rawMerkl = (coreRawMerkl != null || paxosRawMerkl != null)
+      ? (coreRawMerkl || 0) + (paxosRawMerkl || 0) || null
+      : null;
+    if (rawMerkl != null) _lastMerkl = rawMerkl;
+    const merklRewards = rawMerkl != null ? rawMerkl : _lastMerkl;
+
+    // Idle USDG = combined supply − combined debt — earns the NIM share
     const idle = totalSupply != null && totalDebt != null
       ? Math.max(totalSupply - totalDebt, 0)
       : null;
-    // Daily revenue thrown off by the idle USDG at the NIM rate.
-    // This is computable for every day we have supply + debt — no Merkl data required,
-    // so it extends as far back as the idle-USDG history goes.
     const nimRevenue = idle != null ? idle * NIM_APY / 365 : null;
 
-    const nimFunded = null; // kept for CSV compat; no longer meaningful with rate-based OOP
+    const nimFunded = null;
 
-    const demand    = row.daily_interest;
-    const supplyApy = row.supply_apy != null ? parseFloat(row.supply_apy) : null;
+    // Daily interest = sum of both hubs
+    const demand    = (row.daily_interest || 0) + (paxos?.daily_interest || 0);
+
+    // Supply APY: recompute from combined utilization; prefer Core Hub hub_apr (same target)
+    const utilization = totalSupply > 0 ? totalDebt / totalSupply : 0;
+    const borrowApyCombined = totalDebt > 0
+      ? ((row.borrow_apy || 0) * (row.total_debt || 0) + (paxos?.borrow_apy || 0) * (paxos?.total_debt || 0)) / totalDebt
+      : (row.borrow_apy || 0);
+    const supplyApy = borrowApyCombined * utilization;
 
     // OOP = Merkl daily spend. Merkl automatically tops up whatever the organic rate
     // doesn't cover to maintain the 6.18% target. The organic interest and NIM flow
@@ -564,6 +584,7 @@ export default function AaveUsdgTab() {
     // same thing in principle, but the hub_apr is more stable and avoids TVL-denominator drift.
     // Fall back to dailyRewards computation for historical days before hub_apr was stored.
     const totalDailyMerkl = merklRewards ?? outOfPocket ?? null;
+    // merkl_hub_apr from Core Hub row — both hubs target same rate (6.18%)
     const rawTotalSupplyApy = row.merkl_hub_apr != null
       ? row.merkl_hub_apr  // directly the campaign-configured total APY
       : (totalDailyMerkl != null && totalSupply
@@ -580,11 +601,11 @@ export default function AaveUsdgTab() {
       date: row.date,
       displayDate: formatDate(row.date),
       totalDebt,
-      borrowApy: parseFloat(row.borrow_apy),
-      dailyInterest: row.daily_interest,
+      borrowApy: borrowApyCombined,
+      dailyInterest: demand,
       merklRewards,
       totalSupply,
-      supplyApy: row.supply_apy != null ? parseFloat(row.supply_apy) : null,
+      supplyApy: supplyApy || null,
       idle,
       nimRevenue,
       nimFunded,
