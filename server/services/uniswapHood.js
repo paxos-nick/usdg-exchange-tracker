@@ -10,12 +10,13 @@ const GECKO   = 'https://api.geckoterminal.com/api/v2';
 const NETWORK = 'robinhood';
 
 const POOLS = [
+  // ── Uniswap v4 pools (32-byte pool IDs) ──────────────────────────────────
   {
     id:      '0xd18c9dc53c12b0db1bc259ff031cd1ac4330ff30a862383904263b6be006bb02',
     name:    'SyrupUSDG/USDG',
     type:    'stable',
     venue:   'Uniswap v4',
-    feeRate: 0.0001, // 0.01% — typical for stablecoin pairs
+    feeRate: 0.0001, // 0.01% (1 bps)
   },
   {
     id:      '0xa5f23cae4e5c3388c5a8a6b08a83f53e56df8f1a63757e606b362994b68a2361',
@@ -25,11 +26,33 @@ const POOLS = [
     feeRate: 0.0001,
   },
   {
+    id:      '0xcb6ffbcc84359535c2cc0a5688c0a76520ea6e0a4820fddd3ac8d7880e576370',
+    name:    'SPCX/USDG',
+    type:    'volatile',
+    venue:   'Uniswap v4',
+    feeRate: 0.01, // 1% (100 bps) — confirmed by user
+  },
+  // ── Uniswap v3 pools (20-byte addresses) ─────────────────────────────────
+  {
     id:      '0x52e65B17fB6E5BA00Ed806f37Afcd2DaA50271Ca',
     name:    'ETH/USDG',
     type:    'volatile',
     venue:   'Uniswap v3',
-    feeRate: 0.0001, // 0.01% confirmed
+    feeRate: 0.0001, // 0.01% (1 bps) — confirmed via fee() on-chain
+  },
+  {
+    id:      '0x69BfaF19C9f377BB306a89aEd9F6B07e2c1a8d9a',
+    name:    'USDG/WETH',
+    type:    'volatile',
+    venue:   'Uniswap v3',
+    feeRate: 0.0005, // 0.05% (5 bps) — confirmed via fee() on-chain
+  },
+  {
+    id:      '0xd4EB21209C4D6093f80B5b84f5C45cc093EA14a3',
+    name:    'NVDA/USDG',
+    type:    'volatile',
+    venue:   'Uniswap v3',
+    feeRate: 0.0005, // 0.05% (5 bps) — confirmed via fee() on-chain
   },
 ];
 
@@ -51,7 +74,8 @@ async function fetchOhlcvVolume(poolId, days) {
   }
 }
 
-// Returns daily volume history for all pools combined: [{date, volume}]
+// Returns daily history for all pools: [{date, volume, feeRevenue}]
+// feeRevenue = sum of (pool_volume × pool_feeRate) — accurate since fee rates differ per pool
 async function getVolumeHistory(days = 100) {
   const byDate = {};
   await Promise.all(POOLS.map(async pool => {
@@ -59,14 +83,17 @@ async function getVolumeHistory(days = 100) {
       const bars = await fetchOhlcvBars(pool.id, days);
       for (const bar of bars) {
         const date = new Date(bar[0] * 1000).toISOString().split('T')[0];
-        byDate[date] = (byDate[date] || 0) + (bar[5] || 0);
+        const vol  = bar[5] || 0;
+        if (!byDate[date]) byDate[date] = { volume: 0, feeRevenue: 0 };
+        byDate[date].volume     += vol;
+        byDate[date].feeRevenue += vol * pool.feeRate;
       }
     } catch (err) {
       console.error(`[UniswapHood] OHLCV error for ${pool.name}:`, err.message);
     }
   }));
   return Object.entries(byDate)
-    .map(([date, volume]) => ({ date, volume }))
+    .map(([date, { volume, feeRevenue }]) => ({ date, volume, feeRevenue }))
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 

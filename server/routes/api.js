@@ -571,7 +571,7 @@ router.get('/hood/volume-history', async (req, res) => {
   try {
     // Always serve from DB first — gives us resilient history regardless of GeckoTerminal availability
     const dbRows = await dbPool.query(
-      'SELECT snapshot_date::text AS date, volume::float FROM hood_volume_history ORDER BY snapshot_date ASC'
+      'SELECT snapshot_date::text AS date, volume::float, fee_revenue::float FROM hood_volume_history ORDER BY snapshot_date ASC'
     );
     const dbHistory = dbRows.rows;
 
@@ -587,10 +587,10 @@ router.get('/hood/volume-history', async (req, res) => {
           // Upsert live data into DB for persistence
           for (const row of live) {
             await dbPool.query(
-              `INSERT INTO hood_volume_history (snapshot_date, volume)
-               VALUES ($1, $2)
-               ON CONFLICT (snapshot_date) DO UPDATE SET volume = EXCLUDED.volume`,
-              [row.date, row.volume]
+              `INSERT INTO hood_volume_history (snapshot_date, volume, fee_revenue)
+               VALUES ($1, $2, $3)
+               ON CONFLICT (snapshot_date) DO UPDATE SET volume=EXCLUDED.volume, fee_revenue=EXCLUDED.fee_revenue`,
+              [row.date, row.volume, row.feeRevenue ?? null]
             );
           }
         }
@@ -601,7 +601,7 @@ router.get('/hood/volume-history', async (req, res) => {
 
     // Re-read from DB after potential upsert
     const finalRows = await dbPool.query(
-      'SELECT snapshot_date::text AS date, volume::float FROM hood_volume_history ORDER BY snapshot_date ASC'
+      'SELECT snapshot_date::text AS date, volume::float, fee_revenue::float FROM hood_volume_history ORDER BY snapshot_date ASC'
     );
     res.json({ history: finalRows.rows });
   } catch (err) {

@@ -171,8 +171,10 @@ const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS hood_volume_history (
     snapshot_date DATE        NOT NULL PRIMARY KEY,
     volume        NUMERIC(24, 2) NOT NULL,
+    fee_revenue   NUMERIC(24, 6),
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
+  ALTER TABLE hood_volume_history ADD COLUMN IF NOT EXISTS fee_revenue NUMERIC(24, 6);
 
   CREATE TABLE IF NOT EXISTS cex_daily_volume (
     snapshot_date DATE        NOT NULL,

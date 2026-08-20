@@ -26,7 +26,7 @@ const C_CURSOR   = 'rgba(25,40,47,0.04)';
 const NIM_APY    = 0.031;
 const STABLE_FEE = 0.0002;
 const RISK_FEE   = 0.0007;
-const HOOD_FEE   = 0.0001; // ETH/USDG v3 pool on-chain fee: 1 bps (0.01%), confirmed via fee() call
+// HOOD_FEE removed — fee revenue now computed per-pool in getVolumeHistory (fee_revenue field)
 
 const VENUES = ['aave', 'okx', 'bullish', 'kraken', 'gate', 'kucoin', 'bitstamp', 'uniswap_hood'];
 
@@ -141,9 +141,10 @@ function computeDaily(aaveHist, okxData, bullishPairs, bullishTotal, supplyByDat
   for (const row of (bitstampData?.dailyVolume || []))
     add(row.date, { bitstampTrading: (row.volume || 0) * STABLE_FEE });
 
-  // Uniswap Hood: OHLCV-accurate daily volumes; ETH/USDG v3 pool fee = 1 bps (confirmed on-chain)
+  // Uniswap Hood: use fee_revenue (per-pool accurate) when available, else volume * 1bps fallback
   for (const row of (hoodOhlcv?.history || []))
-    if (row.volume > 0) add(row.date, { uniswapHoodTrading: (row.volume || 0) * HOOD_FEE });
+    if (row.volume > 0)
+      add(row.date, { uniswapHoodTrading: row.feeRevenue != null ? row.feeRevenue : (row.volume || 0) * 0.0001 });
 
   return Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date)).map(r => {
     const borrowerInterest = r.aaveBorrow;
