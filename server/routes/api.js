@@ -622,6 +622,7 @@ router.get('/aave/usdg/paxos', async (req, res) => {
     res.json(data);
   } catch (err) {
     console.error('Paxos Hub error:', err.message);
+    if (entry) return res.json(entry.data);
     res.status(500).json({ error: err.message });
   }
 });
@@ -709,6 +710,8 @@ router.get('/aave/usdg', async (req, res) => {
     res.json(data);
   } catch (err) {
     console.error('Error fetching Aave v4 USDG data:', err.message);
+    // Serve stale cache if available rather than returning an error
+    if (entry) return res.json(entry.data);
     res.status(500).json({ error: err.message });
   }
 });

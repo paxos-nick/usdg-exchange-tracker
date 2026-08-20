@@ -12,8 +12,12 @@
 
 const axios = require('axios');
 
-// Use dRPC free tier for archive access (PublicNode rate-limits on high backfill volume)
-const RPC_URL = 'https://eth.drpc.org';
+// Primary + fallback RPCs — drpc.org sometimes returns 408 under load
+const RPC_URLS = [
+  'https://eth.drpc.org',
+  'https://rpc.ankr.com/eth',
+  'https://ethereum.publicnode.com',
+];
 
 // Aave v4 CORE_HUB on Ethereum mainnet
 const CORE_HUB = '0xCca852Bc40e560adC3b1Cc58CA5b55638ce826c9';
@@ -48,11 +52,20 @@ const SECONDS_PER_YEAR = 31536000;
 const USDG_DECIMALS   = 6;
 
 async function rpcCall(method, params) {
-  const r = await axios.post(RPC_URL, {
-    jsonrpc: '2.0', method, params, id: 1
-  }, { headers: { 'Content-Type': 'application/json' }, timeout: 10000 });
-  if (r.data.error) throw new Error(`RPC error: ${r.data.error.message}`);
-  return r.data.result;
+  let lastErr;
+  for (const url of RPC_URLS) {
+    try {
+      const r = await axios.post(url, {
+        jsonrpc: '2.0', method, params, id: 1
+      }, { headers: { 'Content-Type': 'application/json' }, timeout: 8000 });
+      if (r.data.error) throw new Error(`RPC error: ${r.data.error.message}`);
+      return r.data.result;
+    } catch (err) {
+      lastErr = err;
+      // try next RPC on timeout or HTTP error
+    }
+  }
+  throw lastErr;
 }
 
 function hex32(n) {
