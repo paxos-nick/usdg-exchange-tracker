@@ -135,24 +135,30 @@ async function runSnapshot() {
         console.error('[Snapshot] Failed to log PAXG supply:', err.message);
       }
 
-      // Log today's USDG Aave v4 borrow data
+      // Shared block ref + Merkl data for both Hub snapshots
+      const aaveToday = new Date().toISOString().split('T')[0];
+      let sharedBlockNum = null;
+      let sharedMerklData = null;
       try {
-        const today = new Date().toISOString().split('T')[0];
         const { blockNumber: refBlock, timestamp: refTs } = await aaveV4Service.getCurrentBlockInfo();
-        const blockNum = aaveV4Service.estimateBlockForDate(today, refBlock, refTs);
-        const aaveData = await aaveV4Service.getUsdgReserveDataAtBlock(blockNum);
-        // Also fetch Merkl daily incentive rewards
-      let merklRewards = null, merklHubApr = null, merklHubTvl = null;
+        sharedBlockNum = aaveV4Service.estimateBlockForDate(aaveToday, refBlock, refTs);
+      } catch (err) {
+        console.error('[Snapshot] Block ref fetch failed:', err.message);
+      }
       try {
-        const merklData = await merklService.getUsdgDailyRewards();
-        merklRewards = merklData.totalDailyRewards;
-        merklHubApr  = merklData.hubApr;   // configured target APR (e.g. 6.2) — queried live
-        merklHubTvl  = merklData.hubTvl;   // Merkl Hub eligible TVL at snapshot time
+        sharedMerklData = await merklService.getUsdgDailyRewards();
       } catch (err) {
         console.error('[Snapshot] Merkl fetch failed:', err.message);
       }
 
-      await pool.query(
+      // Log today's USDG Aave v4 Core Hub borrow data
+      try {
+        if (sharedBlockNum == null) throw new Error('no block ref');
+        const aaveData = await aaveV4Service.getUsdgReserveDataAtBlock(sharedBlockNum);
+        const merklRewards = sharedMerklData?.totalDailyRewards ?? null;
+        const merklHubApr  = sharedMerklData?.hubApr ?? null;
+        const merklHubTvl  = sharedMerklData?.hubTvl ?? null;
+        await pool.query(
           `INSERT INTO aave_usdg_history
              (snapshot_date, total_debt, borrow_apy, daily_interest, block_number, spoke_breakdown,
               merkl_daily_rewards, total_supply, supply_apy, merkl_hub_apr, merkl_hub_tvl)
@@ -163,23 +169,22 @@ async function runSnapshot() {
                  spoke_breakdown=EXCLUDED.spoke_breakdown, merkl_daily_rewards=EXCLUDED.merkl_daily_rewards,
                  total_supply=EXCLUDED.total_supply, supply_apy=EXCLUDED.supply_apy,
                  merkl_hub_apr=EXCLUDED.merkl_hub_apr, merkl_hub_tvl=EXCLUDED.merkl_hub_tvl`,
-          [today, aaveData.totalVariableDebt, aaveData.variableBorrowApy,
-           aaveData.dailyInterestCost, blockNum, JSON.stringify(aaveData.spokeBreakdown),
+          [aaveToday, aaveData.totalVariableDebt, aaveData.variableBorrowApy,
+           aaveData.dailyInterestCost, sharedBlockNum, JSON.stringify(aaveData.spokeBreakdown),
            merklRewards, aaveData.totalSupply, aaveData.supplyApy, merklHubApr, merklHubTvl]
         );
-        console.log(`[Snapshot] Aave v4 USDG logged: $${(aaveData.totalVariableDebt / 1e6).toFixed(2)}M @ ${aaveData.variableBorrowApy.toFixed(2)}% APY, Hub APR: ${merklHubApr?.toFixed(2) || 'n/a'}%, Hub TVL: $${(merklHubTvl / 1e6)?.toFixed(2) || 'n/a'}M`);
+        console.log(`[Snapshot] Aave v4 Core Hub logged: $${(aaveData.totalVariableDebt / 1e6).toFixed(2)}M @ ${aaveData.variableBorrowApy.toFixed(2)}% APY, Hub APR: ${merklHubApr?.toFixed(2) || 'n/a'}%`);
       } catch (err) {
         console.error('[Snapshot] Failed to log Aave v4 USDG:', err.message);
       }
 
       // Paxos Hub daily snapshot
       try {
-        const today2 = new Date().toISOString().split('T')[0];
-        const paxosData = await aaveV4Service.getPaxosHubDataAtBlock(blockNum);
-        // paxosMerklRewards comes from the same merklData fetched above for the Core Hub
-        const paxosMerkl    = merklData?.paxosDailyRewards ?? null;
-        const paxosHubApr   = merklData?.paxosHubApr ?? null;
-        const paxosHubTvl   = merklData?.paxosHubTvl ?? null;
+        if (sharedBlockNum == null) throw new Error('no block ref');
+        const paxosData = await aaveV4Service.getPaxosHubDataAtBlock(sharedBlockNum);
+        const paxosMerkl  = sharedMerklData?.paxosDailyRewards ?? null;
+        const paxosHubApr = sharedMerklData?.paxosHubApr ?? null;
+        const paxosHubTvl = sharedMerklData?.paxosHubTvl ?? null;
         await pool.query(
           `INSERT INTO aave_usdg_paxos_history
              (snapshot_date, total_debt, borrow_apy, daily_interest, total_supply, supply_apy, block_number,
@@ -191,8 +196,8 @@ async function runSnapshot() {
              supply_apy=EXCLUDED.supply_apy, block_number=EXCLUDED.block_number,
              merkl_daily_rewards=EXCLUDED.merkl_daily_rewards,
              merkl_hub_apr=EXCLUDED.merkl_hub_apr, merkl_hub_tvl=EXCLUDED.merkl_hub_tvl`,
-          [today2, paxosData.totalVariableDebt, paxosData.variableBorrowApy,
-           paxosData.dailyInterestCost, paxosData.totalSupply, paxosData.organicSupplyApy, blockNum,
+          [aaveToday, paxosData.totalVariableDebt, paxosData.variableBorrowApy,
+           paxosData.dailyInterestCost, paxosData.totalSupply, paxosData.organicSupplyApy, sharedBlockNum,
            paxosMerkl, paxosHubApr, paxosHubTvl]
         );
         console.log(`[Snapshot] Paxos Hub logged: $${(paxosData.totalVariableDebt / 1e6).toFixed(2)}M @ ${paxosData.variableBorrowApy.toFixed(2)}% APY`);
