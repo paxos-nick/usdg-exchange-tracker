@@ -3,7 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, LabelList
 } from 'recharts';
-import { useAaveUsdgHistory, useVolumeData, usePairVolumeData, useUsdgSupply, useHoodVolumeHistory } from '../hooks/useVolumeData';
+import { useAaveUsdgHistory, useAaveUsdgPaxosHistory, useVolumeData, usePairVolumeData, useUsdgSupply, useHoodVolumeHistory } from '../hooks/useVolumeData';
 
 // ── Paxos brand palette ───────────────────────────────────────────────────────────
 const GDP_BG      = '#f6f8fb';           // Paxos light background
@@ -88,7 +88,7 @@ function buildSupplyByDate(supplyHistory) {
   return byDate;
 }
 
-function computeDaily(aaveHist, okxData, bullishPairs, bullishTotal, supplyByDate,
+function computeDaily(aaveHist, paxosHist, okxData, bullishPairs, bullishTotal, supplyByDate,
   krakenData, gateData, kucoinPairs, kucoinTotal, bitstampData, hoodOhlcv) {
   const byDate = {};
   const add = (date, patch) => {
@@ -98,9 +98,17 @@ function computeDaily(aaveHist, okxData, bullishPairs, bullishTotal, supplyByDat
     Object.assign(byDate[date], patch);
   };
 
+  // Build Paxos Hub lookup by date
+  const paxosByDate = {};
+  for (const row of (paxosHist?.history || [])) paxosByDate[row.date] = row;
+
   for (const row of (aaveHist?.history || [])) {
-    const idle = Math.max((row.total_supply || 0) - (row.total_debt || 0), 0);
-    add(row.date, { aaveBorrow: row.daily_interest || 0, aaveNim: idle * NIM_APY / 365 });
+    const paxos = paxosByDate[row.date] || null;
+    const totalDebt   = (row.total_debt   || 0) + (paxos?.total_debt   || 0);
+    const totalSupply = (row.total_supply || 0) + (paxos?.total_supply || 0);
+    const dailyInt    = (row.daily_interest || 0) + (paxos?.daily_interest || 0);
+    const idle = Math.max(totalSupply - totalDebt, 0);
+    add(row.date, { aaveBorrow: dailyInt, aaveNim: idle * NIM_APY / 365 });
   }
   for (const row of (okxData?.dailyVolume || []))
     add(row.date, { okxTrading: (row.volume || 0) * STABLE_FEE });
@@ -365,6 +373,7 @@ export default function GdpTab() {
   const [selectedVenue, setSelectedVenue] = useState('aave');
 
   const { data: aaveHist,     loading: l1 } = useAaveUsdgHistory();
+  const { data: paxosHist                 } = useAaveUsdgPaxosHistory();
   const { data: okxData,      loading: l2 } = useVolumeData('okx');
   const { data: bullishTotal          }     = useVolumeData('bullish'); // non-blocking — takes ~19s on cold cache
   const { data: bullishPairs           }     = usePairVolumeData('bullish');
@@ -385,9 +394,9 @@ export default function GdpTab() {
     return (view4 === '12m' ? agg.slice(-12) : agg.slice(-4)).map(r => ({ ...r, displayDate: r.label }));
   }, [chainGdnDaily, view4]);
   const daily = useMemo(
-    () => computeDaily(aaveHist, okxData, bullishPairs, bullishTotal, supplyByDate,
+    () => computeDaily(aaveHist, paxosHist, okxData, bullishPairs, bullishTotal, supplyByDate,
       krakenData, gateData, kucoinPairs, kucoinTotal, bitstampData, hoodOhlcv),
-    [aaveHist, okxData, bullishPairs, bullishTotal, supplyByDate,
+    [aaveHist, paxosHist, okxData, bullishPairs, bullishTotal, supplyByDate,
      krakenData, gateData, kucoinPairs, kucoinTotal, bitstampData, hoodOhlcv]
   );
 
