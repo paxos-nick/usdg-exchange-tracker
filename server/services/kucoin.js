@@ -5,7 +5,7 @@ const BASE_URL = 'https://api.kucoin.com/api/v1';
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Kucoin uses USDG-USDT format
-const USDG_PAIRS = ['USDG-USDT', 'BTC-USDG'];
+const USDG_PAIRS = ['USDG-USDT', 'BTC-USDG', 'ETH-USDG'];
 
 // Check if a pair needs volume conversion (base currency is not a stablecoin)
 function needsVolumeConversion(symbol) {

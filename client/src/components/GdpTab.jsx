@@ -133,12 +133,14 @@ function computeDaily(aaveHist, paxosHist, okxData, bullishPairs, bullishTotal, 
   for (const row of (gateData?.dailyVolume || []))
     add(row.date, { gateTrading: (row.volume || 0) * STABLE_FEE });
 
-  // KuCoin: USDG/USDT (2bps) + BTC/USDG (7bps); total fallback at stable rate
+  // KuCoin: USDG/USDT (2bps) + BTC/USDG + ETH/USDG (7bps each); total fallback at stable rate
   const kpv = kucoinPairs?.volumeByPair || {};
-  if ((kpv['USDG/USDT']?.length || 0) > 0 || (kpv['BTC/USDG']?.length || 0) > 0) {
+  if ((kpv['USDG/USDT']?.length || 0) > 0 || (kpv['BTC/USDG']?.length || 0) > 0 || (kpv['ETH/USDG']?.length || 0) > 0) {
     for (const row of (kpv['USDG/USDT'] || []))
       add(row.date, { kucoinStable: (row.volume || 0) * STABLE_FEE });
     for (const row of (kpv['BTC/USDG'] || []))
+      add(row.date, { kucoinRisk: (row.volume || 0) * RISK_FEE });
+    for (const row of (kpv['ETH/USDG'] || []))
       add(row.date, { kucoinRisk: (row.volume || 0) * RISK_FEE });
   } else {
     for (const row of (kucoinTotal?.dailyVolume || []))
