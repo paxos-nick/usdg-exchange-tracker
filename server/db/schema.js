@@ -188,6 +188,19 @@ const SCHEMA_SQL = `
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
+  CREATE TABLE IF NOT EXISTS kamino_usdg_history (
+    id              SERIAL PRIMARY KEY,
+    snapshot_date   DATE          NOT NULL UNIQUE,
+    total_borrows   NUMERIC(24,6) NOT NULL,
+    borrow_apy      NUMERIC(12,8) NOT NULL,
+    daily_interest  NUMERIC(20,6) NOT NULL,
+    total_supply    NUMERIC(24,6),
+    supply_apy      NUMERIC(12,8),
+    utilization     NUMERIC(10,6),
+    created_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_kamino_usdg_date ON kamino_usdg_history (snapshot_date DESC);
+
   CREATE TABLE IF NOT EXISTS cex_daily_volume (
     snapshot_date DATE        NOT NULL,
     exchange      VARCHAR(50) NOT NULL,

@@ -610,6 +610,23 @@ router.get('/hood/volume-history', async (req, res) => {
   }
 });
 
+// GET /api/kamino/history - Kamino USDG daily borrow history
+router.get('/kamino/history', async (req, res) => {
+  try {
+    const result = await dbPool.query(`
+      SELECT snapshot_date::text AS date,
+             total_borrows::float, borrow_apy::float,
+             daily_interest::float, total_supply::float, utilization::float
+      FROM kamino_usdg_history
+      ORDER BY snapshot_date ASC
+    `);
+    res.json({ history: result.rows });
+  } catch (err) {
+    console.error('[Kamino history] Error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch Kamino history' });
+  }
+});
+
 // GET /api/orca/fee-history - Daily Orca fee revenue aggregated from dex_pool_snapshots
 router.get('/orca/fee-history', async (req, res) => {
   try {

@@ -3,7 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, LabelList
 } from 'recharts';
-import { useAaveUsdgHistory, useAaveUsdgPaxosHistory, useVolumeData, usePairVolumeData, useUsdgSupply, useHoodVolumeHistory, useOrcaFeeHistory } from '../hooks/useVolumeData';
+import { useAaveUsdgHistory, useAaveUsdgPaxosHistory, useKaminoHistory, useVolumeData, usePairVolumeData, useUsdgSupply, useHoodVolumeHistory, useOrcaFeeHistory } from '../hooks/useVolumeData';
 
 // ── Paxos brand palette ───────────────────────────────────────────────────────────
 const GDP_BG      = '#f6f8fb';           // Paxos light background
@@ -28,7 +28,7 @@ const STABLE_FEE = 0.0002;
 const RISK_FEE   = 0.0007;
 // HOOD_FEE removed — fee revenue now computed per-pool in getVolumeHistory (fee_revenue field)
 
-const VENUES = ['aave', 'okx', 'bullish', 'kraken', 'gate', 'kucoin', 'bitstamp', 'uniswap_hood', 'orca'];
+const VENUES = ['aave', 'kamino', 'okx', 'bullish', 'kraken', 'gate', 'kucoin', 'bitstamp', 'uniswap_hood', 'orca'];
 
 // Chain-level GDN reward breakdown
 const CHAIN_KEYS   = ['ethereum', 'solana', 'xlayer', 'robinhood', 'ink', 'arbitrum'];
@@ -36,9 +36,9 @@ const CHAIN_LABELS = { ethereum: 'Ethereum', solana: 'Solana', xlayer: 'xLayer',
   robinhood: 'Robinhood', ink: 'Ink', arbitrum: 'Arbitrum' };
 const CHAIN_COLORS = { ethereum: '#0094d8', solana: '#9945FF', xlayer: '#43494e',
   robinhood: '#c7e36c', ink: '#19282f', arbitrum: '#28a0f0' };
-const VENUE_LABELS = { aave: 'AAVE', okx: 'OKX', bullish: 'Bullish',
+const VENUE_LABELS = { aave: 'AAVE', kamino: 'Kamino', okx: 'OKX', bullish: 'Bullish',
   kraken: 'Kraken', gate: 'Gate', kucoin: 'KuCoin', bitstamp: 'Bitstamp', uniswap_hood: 'Hood (Uniswap)', orca: 'Orca' };
-const VENUE_COLORS = { aave: C_AAVE, okx: C_OKX, bullish: C_BULLISH,
+const VENUE_COLORS = { aave: C_AAVE, kamino: '#9b59b6', okx: C_OKX, bullish: C_BULLISH,
   kraken: '#5741d9', gate: '#0ba5ec', kucoin: '#29a784', bitstamp: '#e84142', uniswap_hood: '#ff007a', orca: '#ff6b35' };
 
 // ── Data computation ──────────────────────────────────────────────────────────────
@@ -88,11 +88,11 @@ function buildSupplyByDate(supplyHistory) {
   return byDate;
 }
 
-function computeDaily(aaveHist, paxosHist, okxData, bullishPairs, bullishTotal, supplyByDate,
+function computeDaily(aaveHist, paxosHist, kaminoHist, okxData, bullishPairs, bullishTotal, supplyByDate,
   krakenData, gateData, kucoinPairs, kucoinTotal, bitstampData, hoodOhlcv, orcaFees) {
   const byDate = {};
   const add = (date, patch) => {
-    if (!byDate[date]) byDate[date] = { date, aaveBorrow: 0, aaveNim: 0, okxTrading: 0,
+    if (!byDate[date]) byDate[date] = { date, aaveBorrow: 0, aaveNim: 0, kaminoBorrow: 0, okxTrading: 0,
       bullishStable: 0, bullishRisk: 0, krakenTrading: 0, gateTrading: 0,
       kucoinStable: 0, kucoinRisk: 0, bitstampTrading: 0, uniswapHoodTrading: 0, orcaTrading: 0 };
     Object.assign(byDate[date], patch);
@@ -110,6 +110,11 @@ function computeDaily(aaveHist, paxosHist, okxData, bullishPairs, bullishTotal, 
     const idle = Math.max(totalSupply - totalDebt, 0);
     add(row.date, { aaveBorrow: dailyInt, aaveNim: idle * NIM_APY / 365 });
   }
+  // Kamino: borrower interest only (no NIM/incentives — purely what borrowers pay)
+  for (const row of (kaminoHist?.history || []))
+    if ((row.daily_interest || 0) > 0)
+      add(row.date, { kaminoBorrow: row.daily_interest });
+
   for (const row of (okxData?.dailyVolume || []))
     add(row.date, { okxTrading: (row.volume || 0) * STABLE_FEE });
 
@@ -162,7 +167,7 @@ function computeDaily(aaveHist, paxosHist, okxData, bullishPairs, bullishTotal, 
       add(row.date, { orcaTrading: row.fee_revenue });
 
   return Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date)).map(r => {
-    const borrowerInterest = r.aaveBorrow;
+    const borrowerInterest = r.aaveBorrow + r.kaminoBorrow;
     const tradingFees = r.okxTrading + r.bullishStable + r.bullishRisk
       + r.krakenTrading + r.gateTrading + r.kucoinStable + r.kucoinRisk + r.bitstampTrading + r.uniswapHoodTrading + r.orcaTrading;
     const chainSupply = supplyByDate?.[r.date];
@@ -172,6 +177,7 @@ function computeDaily(aaveHist, paxosHist, okxData, bullishPairs, bullishTotal, 
       borrowerInterest, tradingFees, gdnRewards,
       hasChainSupply: chainSupply != null,
       aave:         r.aaveBorrow + r.aaveNim,
+      kamino:       r.kaminoBorrow,
       okx:          r.okxTrading,
       bullish:      r.bullishStable + r.bullishRisk,
       kraken:       r.krakenTrading,
@@ -205,9 +211,9 @@ function aggregateBy(daily, unit) {
     }
     if (!buckets[key]) buckets[key] = { period: key, label, sort,
       borrowerInterest: 0, tradingFees: 0, gdnRewards: 0,
-      aave: 0, okx: 0, bullish: 0, kraken: 0, gate: 0, kucoin: 0, bitstamp: 0, uniswap_hood: 0, orca: 0, total: 0 };
+      aave: 0, kamino: 0, okx: 0, bullish: 0, kraken: 0, gate: 0, kucoin: 0, bitstamp: 0, uniswap_hood: 0, orca: 0, total: 0 };
     for (const k of ['borrowerInterest','tradingFees','gdnRewards',
-      'aave','okx','bullish','kraken','gate','kucoin','bitstamp','uniswap_hood','orca','total'])
+      'aave','kamino','okx','bullish','kraken','gate','kucoin','bitstamp','uniswap_hood','orca','total'])
       buckets[key][k] += row[k] || 0;
   }
   return Object.values(buckets).sort((a, b) => a.sort.localeCompare(b.sort));
@@ -359,6 +365,7 @@ const VenueTooltip = makeTooltip([
   { key: 'gate',         label: 'Gate',            color: '#0ba5ec' },
   { key: 'kucoin',       label: 'KuCoin',          color: '#29a784' },
   { key: 'bitstamp',     label: 'Bitstamp',        color: '#e84142' },
+  { key: 'kamino',       label: 'Kamino',           color: '#9b59b6' },
   { key: 'uniswap_hood', label: 'Hood (Uniswap)',  color: '#ff007a' },
   { key: 'orca',         label: 'Orca',             color: '#ff6b35' },
 ]);
@@ -393,6 +400,7 @@ export default function GdpTab() {
   const { data: bitstampData           }     = useVolumeData('bitstamp');
   const { data: hoodOhlcv              }     = useHoodVolumeHistory();
   const { data: orcaFees               }     = useOrcaFeeHistory();
+  const { data: kaminoHist             }     = useKaminoHistory();
   const { data: supplyData             }     = useUsdgSupply();
 
   const supplyByDate    = useMemo(() => buildSupplyByDate(supplyData?.history), [supplyData]);
@@ -404,9 +412,9 @@ export default function GdpTab() {
     return (view4 === '12m' ? agg.slice(-12) : agg.slice(-4)).map(r => ({ ...r, displayDate: r.label }));
   }, [chainGdnDaily, view4]);
   const daily = useMemo(
-    () => computeDaily(aaveHist, paxosHist, okxData, bullishPairs, bullishTotal, supplyByDate,
+    () => computeDaily(aaveHist, paxosHist, kaminoHist, okxData, bullishPairs, bullishTotal, supplyByDate,
       krakenData, gateData, kucoinPairs, kucoinTotal, bitstampData, hoodOhlcv, orcaFees),
-    [aaveHist, paxosHist, okxData, bullishPairs, bullishTotal, supplyByDate,
+    [aaveHist, paxosHist, kaminoHist, okxData, bullishPairs, bullishTotal, supplyByDate,
      krakenData, gateData, kucoinPairs, kucoinTotal, bitstampData, hoodOhlcv, orcaFees]
   );
 
@@ -420,6 +428,8 @@ export default function GdpTab() {
     const venueTotal = r[selectedVenue] || 0;
     if (selectedVenue === 'aave')
       breakdown = { borrowerInterest: r.aaveBorrow, gdnRewards: r.aaveNim, tradingFees: 0, total: r.aave };
+    else if (selectedVenue === 'kamino')
+      breakdown = { borrowerInterest: r.kaminoBorrow, gdnRewards: 0, tradingFees: 0, total: r.kaminoBorrow };
     else
       breakdown = { borrowerInterest: 0, gdnRewards: 0, tradingFees: venueTotal, total: venueTotal };
     return { ...breakdown, displayDate: fmtLabel(r, view3) };

@@ -206,6 +206,32 @@ async function runSnapshot() {
       }
     }
 
+    // Daily: Kamino USDG lending snapshot
+    if (isDailyRun) {
+      try {
+        const kaminoService = require('../services/kamino');
+        const kaminoDate = new Date().toISOString().split('T')[0];
+        const kd = await kaminoService.getLendingData();
+        if (kd) {
+          const borrowApy = kd.borrowAPY;  // decimal e.g. 0.047
+          const dailyInt = kd.totalBorrows * borrowApy / 365;
+          await pool.query(
+            `INSERT INTO kamino_usdg_history
+               (snapshot_date, total_borrows, borrow_apy, daily_interest, total_supply, supply_apy, utilization)
+             VALUES ($1,$2,$3,$4,$5,$6,$7)
+             ON CONFLICT (snapshot_date) DO UPDATE SET
+               total_borrows=EXCLUDED.total_borrows, borrow_apy=EXCLUDED.borrow_apy,
+               daily_interest=EXCLUDED.daily_interest, total_supply=EXCLUDED.total_supply,
+               supply_apy=EXCLUDED.supply_apy, utilization=EXCLUDED.utilization`,
+            [kaminoDate, kd.totalBorrows, borrowApy, dailyInt, kd.depositTvl, kd.supplyAPY, kd.utilization / 100]
+          );
+          console.log(`[Snapshot] Kamino USDG logged: $${(kd.totalBorrows / 1e6).toFixed(2)}M @ ${(borrowApy * 100).toFixed(2)}% APY, daily_int=$${dailyInt.toFixed(2)}`);
+        }
+      } catch (err) {
+        console.error('[Snapshot] Failed to log Kamino USDG:', err.message);
+      }
+    }
+
     // Daily: USDG circulating supply by chain
     if (isDailyRun) {
       try {
