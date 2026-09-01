@@ -206,6 +206,27 @@ async function runSnapshot() {
       }
     }
 
+    // Daily: Morpho USDG lending snapshot (5 markets on Hood chain)
+    if (isDailyRun) {
+      try {
+        const morphoService = require('../services/morpho');
+        const morphoDate = new Date().toISOString().split('T')[0];
+        const md = await morphoService.getLendingData();
+        await pool.query(
+          `INSERT INTO morpho_usdg_history
+             (snapshot_date, total_borrows, borrow_apy, daily_interest, utilization)
+           VALUES ($1,$2,$3,$4,$5)
+           ON CONFLICT (snapshot_date) DO UPDATE SET
+             total_borrows=EXCLUDED.total_borrows, borrow_apy=EXCLUDED.borrow_apy,
+             daily_interest=EXCLUDED.daily_interest, utilization=EXCLUDED.utilization`,
+          [morphoDate, md.totalBorrows, md.borrowApy, md.dailyInterest, md.utilization]
+        );
+        console.log(`[Snapshot] Morpho USDG logged: $${(md.totalBorrows / 1e6).toFixed(1)}M @ ${(md.borrowApy * 100).toFixed(2)}% APY, daily_int=$${md.dailyInterest.toFixed(0)}`);
+      } catch (err) {
+        console.error('[Snapshot] Failed to log Morpho USDG:', err.message);
+      }
+    }
+
     // Daily: Kamino USDG lending snapshot
     if (isDailyRun) {
       try {

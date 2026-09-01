@@ -455,6 +455,27 @@ export function useHoodVolumeHistory() {
   return { data, loading, refetch: fetchData };
 }
 
+export function useMorphoHistory() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/morpho/history');
+      if (!response.ok) throw new Error(response.statusText);
+      setData(await response.json());
+    } catch (err) {
+      console.error('Morpho history error:', err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+  return { data, loading, refetch: fetchData };
+}
+
 export function useKaminoHistory() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);

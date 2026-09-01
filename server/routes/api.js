@@ -610,6 +610,23 @@ router.get('/hood/volume-history', async (req, res) => {
   }
 });
 
+// GET /api/morpho/history - Morpho USDG daily borrow history (5 Hood chain markets)
+router.get('/morpho/history', async (req, res) => {
+  try {
+    const result = await dbPool.query(`
+      SELECT snapshot_date::text AS date,
+             total_borrows::float, borrow_apy::float,
+             daily_interest::float, utilization::float
+      FROM morpho_usdg_history
+      ORDER BY snapshot_date ASC
+    `);
+    res.json({ history: result.rows });
+  } catch (err) {
+    console.error('[Morpho history] Error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch Morpho history' });
+  }
+});
+
 // GET /api/kamino/history - Kamino USDG daily borrow history
 router.get('/kamino/history', async (req, res) => {
   try {
