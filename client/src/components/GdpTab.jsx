@@ -680,13 +680,15 @@ export default function GdpTab() {
                   <Tooltip content={<VenueTooltip />} cursor={{ fill: C_CURSOR }} />
                   <Legend iconType="square" wrapperStyle={{ color: C_DIM, fontSize: 12 }} />
                   {activeVenues.has('aave')         && <Bar dataKey="aave"         stackId="v" fill={C_AAVE}                      name="AAVE"            isAnimationActive={false} />}
+                  {activeVenues.has('kamino')       && <Bar dataKey="kamino"       stackId="v" fill={VENUE_COLORS.kamino}          name="Kamino"          isAnimationActive={false} />}
                   {activeVenues.has('okx')          && <Bar dataKey="okx"          stackId="v" fill={C_OKX}                       name="OKX"             isAnimationActive={false} />}
                   {activeVenues.has('bullish')      && <Bar dataKey="bullish"      stackId="v" fill={C_BULLISH}                    name="Bullish"         isAnimationActive={false} />}
                   {activeVenues.has('kraken')       && <Bar dataKey="kraken"       stackId="v" fill={VENUE_COLORS.kraken}          name="Kraken"          isAnimationActive={false} />}
                   {activeVenues.has('gate')         && <Bar dataKey="gate"         stackId="v" fill={VENUE_COLORS.gate}            name="Gate"            isAnimationActive={false} />}
                   {activeVenues.has('kucoin')       && <Bar dataKey="kucoin"       stackId="v" fill={VENUE_COLORS.kucoin}          name="KuCoin"          isAnimationActive={false} />}
                   {activeVenues.has('bitstamp')     && <Bar dataKey="bitstamp"     stackId="v" fill={VENUE_COLORS.bitstamp}        name="Bitstamp"        isAnimationActive={false} />}
-                  {activeVenues.has('uniswap_hood') && <Bar dataKey="uniswap_hood" stackId="v" fill={VENUE_COLORS.uniswap_hood}    name="Hood (Uniswap)"  radius={[3,3,0,0]} isAnimationActive={false} />}
+                  {activeVenues.has('uniswap_hood') && <Bar dataKey="uniswap_hood" stackId="v" fill={VENUE_COLORS.uniswap_hood}    name="Hood (Uniswap)"  isAnimationActive={false} />}
+                  {activeVenues.has('orca')         && <Bar dataKey="orca"         stackId="v" fill={VENUE_COLORS.orca}            name="Orca"            radius={[3,3,0,0]} isAnimationActive={false} />}
                 </BarChart>
               </ResponsiveContainer>
             </div>
