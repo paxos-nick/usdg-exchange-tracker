@@ -455,6 +455,27 @@ export function useHoodVolumeHistory() {
   return { data, loading, refetch: fetchData };
 }
 
+export function useOrcaFeeHistory() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/orca/fee-history');
+      if (!response.ok) throw new Error(response.statusText);
+      setData(await response.json());
+    } catch (err) {
+      console.error('Orca fee history error:', err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+  return { data, loading, refetch: fetchData };
+}
+
 export function useUsdgSupply() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);

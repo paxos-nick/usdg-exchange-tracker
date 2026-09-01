@@ -610,6 +610,26 @@ router.get('/hood/volume-history', async (req, res) => {
   }
 });
 
+// GET /api/orca/fee-history - Daily Orca fee revenue aggregated from dex_pool_snapshots
+router.get('/orca/fee-history', async (req, res) => {
+  try {
+    const result = await dbPool.query(`
+      SELECT s.taken_at::date::text AS date,
+             SUM(dp.fees_24h)::float   AS fee_revenue,
+             SUM(dp.volume_24h)::float AS volume
+      FROM dex_pool_snapshots dp
+      JOIN snapshots s ON dp.snapshot_id = s.id
+      WHERE dp.venue = 'Orca' AND s.snapshot_type = 'daily'
+      GROUP BY s.taken_at::date
+      ORDER BY date ASC
+    `);
+    res.json({ history: result.rows });
+  } catch (err) {
+    console.error('[Orca fee-history] Error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch Orca fee history' });
+  }
+});
+
 // GET /api/aave/usdg/paxos - Live Paxos Hub data
 router.get('/aave/usdg/paxos', async (req, res) => {
   const cacheKey = 'aave_usdg_paxos';

@@ -18,6 +18,12 @@ const POOLS = [
     chain: 'solana'
   },
   {
+    address: '5p58XYzEUuvceAb4momaQ943rTPLgigdBXtJNdnZTDJ9',
+    name: 'USDG/USDe',
+    type: 'stablecoin',
+    chain: 'solana'
+  },
+  {
     address: 'EbGwM46wxy7EYuwhYrLN1UQPpG15FoEamQvzdMPJLwP6',
     name: 'USDG/xBTC',
     type: 'risk',
