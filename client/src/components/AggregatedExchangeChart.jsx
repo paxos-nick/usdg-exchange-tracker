@@ -20,7 +20,8 @@ const EXCHANGE_COLORS = {
   gate: '#f59e0b',
   kucoin: '#3b82f6',
   bitmart: '#ec4899',
-  okx: '#10b981'
+  okx: '#10b981',
+  bitstamp: '#e84142'
 };
 
 const EXCHANGE_NAMES = {
@@ -29,7 +30,8 @@ const EXCHANGE_NAMES = {
   gate: 'Gate.io',
   kucoin: 'Kucoin',
   bitmart: 'Bitmart',
-  okx: 'OKX'
+  okx: 'OKX',
+  bitstamp: 'Bitstamp'
 };
 
 function formatVolume(value) {
