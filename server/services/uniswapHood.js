@@ -90,6 +90,66 @@ const POOLS = [
     venue:   'Uniswap v4',
     feeRate: 0.0005, // 0.05% (5 bps) — from GeckoTerminal pool name
   },
+  // ── Additional pools added 2026-09 ────────────────────────────────────────
+  {
+    id:      '0xfe2a80bb5618fd14984b92ca6d45bf5ba67443ddb1435e28b2e48df2fc1526cd',
+    name:    'SPY/USDG',
+    type:    'volatile',
+    venue:   'Uniswap v4',
+    feeRate: 0.003, // 0.3% (30 bps) — from GeckoTerminal pool name
+  },
+  {
+    id:      '0xfAb520051f96F4D2a32c22B6a3dD7fFfdf231bFe',
+    name:    'SGOV/USDG',
+    type:    'stable',
+    venue:   'Uniswap v3',
+    feeRate: 0.003, // 0.3% (30 bps) — from GeckoTerminal pool name
+  },
+  {
+    id:      '0x7A6A053eCCf1446A2633E05aA6D40D09381997ec',
+    name:    'GLD/USDG',
+    type:    'volatile',
+    venue:   'Uniswap v3',
+    feeRate: 0.003, // 0.3% (30 bps) — from GeckoTerminal pool name
+  },
+  {
+    id:      '0x7A192E71564ec66eE0763e328a3Ac274942dE4e1',
+    name:    'PONS/USDG 1%',
+    type:    'volatile',
+    venue:   'Uniswap v3',
+    feeRate: 0.01, // 1% (100 bps) — from GeckoTerminal pool name; distinct fee tier from existing PONS/USDG (0.3%)
+  },
+  {
+    id:      '0xc61284332117c3FB23A2A56cceFFD07F7aF60029',
+    name:    'SPCX/USDG 0.05%',
+    type:    'volatile',
+    venue:   'Uniswap v3',
+    feeRate: 0.0005, // 0.05% (5 bps) — from GeckoTerminal pool name; distinct fee tier from existing SPCX/USDG (1%)
+  },
+  {
+    id:      '0xf399bd1544377680d48c62fd85c2105b869e55906c4189cc5ab3b4e83446928c',
+    name:    'U/USDG',
+    type:    'volatile',
+    venue:   'Uniswap v4',
+    feeRate: 0.00008, // 0.008% (0.8 bps) — from GeckoTerminal pool name
+  },
+  {
+    id:      '0xbac3aa3b91584a53a579b3c999a56756e954e59247e497bad1d25a4334bde551',
+    name:    'WETH/USDG (dynamic)',
+    type:    'volatile',
+    venue:   'Uniswap v4',
+    // Dynamic-fee hook pool (fee flag 0x800000 on-chain, hook 0x06a88987...) —
+    // no fixed bps exists; approximated at 0.05% to match the other low-fee
+    // WETH/USDG v4 pool. Revisit if a way to read the live hook fee appears.
+    feeRate: 0.0005,
+  },
+  {
+    id:      '0xd986decace9ec31ff37f5e0b28155fd5f83e604d8ea995163541cbd119c24614',
+    name:    'WETH/USDG (0%)',
+    type:    'volatile',
+    venue:   'Uniswap v4',
+    feeRate: 0, // confirmed 0% static fee via on-chain Initialize event; TVL is negligible (~$4.8K)
+  },
 ];
 
 async function fetchOhlcvBars(poolId, limit) {
