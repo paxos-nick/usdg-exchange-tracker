@@ -3,7 +3,6 @@ const EXCHANGES = [
   { id: 'bullish', name: 'Bullish' },
   { id: 'gate', name: 'Gate.io' },
   { id: 'kucoin', name: 'Kucoin' },
-  { id: 'bitmart', name: 'Bitmart' },
   { id: 'okx', name: 'OKX' }
 ];
 

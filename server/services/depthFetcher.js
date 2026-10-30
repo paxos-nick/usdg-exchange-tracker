@@ -1,18 +1,16 @@
 const krakenService = require('./kraken');
 const gateService = require('./gate');
 const kucoinService = require('./kucoin');
-const bitmartService = require('./bitmart');
 const okxService = require('./okx');
 const bitstampService = require('./bitstamp');
 const { classifyPair, getBpsLevels, calculateDepthMetrics } = require('../utils/depthCalculator');
 
-const EXCHANGES = ['kraken', 'gate', 'kucoin', 'bitmart', 'okx', 'bitstamp'];
+const EXCHANGES = ['kraken', 'gate', 'kucoin', 'okx', 'bitstamp'];
 
 const services = {
   kraken: krakenService,
   gate: gateService,
   kucoin: kucoinService,
-  bitmart: bitmartService,
   okx: okxService,
   bitstamp: bitstampService,
 };
@@ -21,7 +19,6 @@ const EXCHANGE_NAMES = {
   kraken: 'Kraken',
   gate: 'Gate.io',
   kucoin: 'Kucoin',
-  bitmart: 'Bitmart',
   okx: 'OKX',
   bitstamp: 'Bitstamp',
 };
@@ -30,7 +27,6 @@ const RATE_LIMITS = {
   kraken: 1000,
   gate: 100,
   kucoin: 200,
-  bitmart: 250,
   okx: 150,
   bitstamp: 250,
 };
@@ -44,8 +40,7 @@ function extractBaseQuote(pair, exchangeName) {
       const quote = (pair.quote || '').replace(/^[XZ]/, '').toUpperCase();
       return { base, quote };
     }
-    case 'gate':
-    case 'bitmart': {
+    case 'gate': {
       const parts = pair.symbol.split('_');
       return { base: parts[0], quote: parts[1] };
     }

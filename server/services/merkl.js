@@ -12,6 +12,11 @@ const USDG_SUPPLY_TYPES = new Set([
   'ERC20LOGPROCESSOR', // wrapped aToken holders
 ]);
 
+// Known campaign identifiers (Merkl rotates these on renewal; classify() falls back to the
+// description, so a new id doesn't break tracking).
+const CORE_CAMPAIGN_IDS  = new Set(['d1e44a399a02addd', '843cee7d4361af56']);
+const PAXOS_CAMPAIGN_IDS = new Set(['3d7ecf5f1d83692f', '1ec4e06414fb00fe']);
+
 /**
  * Fetch the current total daily USDG supply-side incentive spend from Merkl.
  * Returns USD value of rewards distributed per day across all live campaigns.
@@ -32,29 +37,43 @@ async function getUsdgDailyRewards() {
     return sum + (opp.dailyRewards || 0);
   }, 0);
 
-  // The Hub campaign is the primary Paxos-funded campaign.
-  // Merkl's API rounds the APR (returns 6.0 when the actual Aave-shown target is 6.18%).
-  // Update CAMPAIGN_TARGET_APR here when a new campaign with a different target launches.
-  const CAMPAIGN_TARGET_APR = 6.18; // both hubs target same total supply APY
+  // Merkl now names both hub campaigns "Lend USDG on Aave V4" and rotates their identifiers
+  // when a campaign renews, so classify by (in order): explicit name, known identifier,
+  // then the description's borrow-netting list. The Paxos Hub campaign nets only USDG/USDC
+  // borrows; the Core Hub campaign nets the wider asset list (USDT, GHO, RLUSD, frxUSD...).
+  const hubCampaigns = liveUsdgSupply.filter(opp =>
+    opp.type === 'AAVE_V4_HUB_SUPPLY' || opp.type === 'AAVE_V4_HUB_NET_LENDING');
+  const classify = (opp) => {
+    const name = opp.name || '';
+    if (name.includes('Paxos')) return 'paxos';
+    if (name.includes('Core')) return 'core';
+    if (PAXOS_CAMPAIGN_IDS.has(opp.identifier)) return 'paxos';
+    if (CORE_CAMPAIGN_IDS.has(opp.identifier)) return 'core';
+    const m = /net of ([^.]*?) borrows/i.exec(opp.description || '');
+    if (m) {
+      const assets = m[1].split(/,\s*/).map(a => a.trim().toUpperCase()).filter(Boolean);
+      return assets.length <= 2 ? 'paxos' : 'core';
+    }
+    return null;
+  };
+  const coreCampaign  = hubCampaigns.find(opp => classify(opp) === 'core');
+  const paxosCampaign = hubCampaigns.find(opp => classify(opp) === 'paxos');
 
-  // Core Hub = "Aave V4 Core Hub"; Paxos Hub = "Aave V4 Paxos Hub"
-  const coreCampaign  = liveUsdgSupply.find(opp =>
-    (opp.type === 'AAVE_V4_HUB_SUPPLY' || opp.type === 'AAVE_V4_HUB_NET_LENDING') &&
-    (opp.name?.includes('Core') || !opp.name?.includes('Paxos'))
-  );
-  const paxosCampaign = liveUsdgSupply.find(opp =>
-    opp.type === 'AAVE_V4_HUB_NET_LENDING' && opp.name?.includes('Paxos')
-  );
+  // opp.apr is the campaign's configured total supply APY (organic + incentive top-up).
+  const aprOf = (opp) => (opp && opp.apr != null ? opp.apr : null);
 
   return {
     totalDailyRewards,
-    hubApr:              coreCampaign  ? CAMPAIGN_TARGET_APR : null,
+    coreDailyRewards:    coreCampaign?.dailyRewards ?? null,
+    hubApr:              aprOf(coreCampaign),
     hubTvl:              coreCampaign?.tvl ?? null,
     paxosDailyRewards:   paxosCampaign?.dailyRewards ?? null,
-    paxosHubApr:         paxosCampaign ? CAMPAIGN_TARGET_APR : null,
+    paxosHubApr:         aprOf(paxosCampaign),
     paxosHubTvl:         paxosCampaign?.tvl ?? null,
     breakdown: liveUsdgSupply.map(opp => ({
       name: opp.name,
+      identifier: opp.identifier,
+      hub: classify(opp),
       type: opp.type,
       dailyRewards: opp.dailyRewards || 0,
       apr: opp.apr || 0,

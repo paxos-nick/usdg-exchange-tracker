@@ -3,7 +3,6 @@ const krakenService = require('../services/kraken');
 const bullishService = require('../services/bullish');
 const gateService = require('../services/gate');
 const kucoinService = require('../services/kucoin');
-const bitmartService = require('../services/bitmart');
 const okxService = require('../services/okx');
 const bitgetService = require('../services/bitget');
 const bitstampService = require('../services/bitstamp');
@@ -14,11 +13,12 @@ const paxgService = require('../services/paxg');
 const aaveV4Service = require('../services/aaveV4');
 const merklService  = require('../services/merkl');
 const dbPool = require('../db/pool');
+const { persistExchangeVolume } = require('../services/cexVolumeStore');
 
 const router = express.Router();
 
 // All supported exchanges
-const EXCHANGES = ['kraken', 'bullish', 'gate', 'kucoin', 'bitmart', 'okx', 'bitstamp'];
+const EXCHANGES = ['kraken', 'bullish', 'gate', 'kucoin', 'okx', 'bitstamp'];
 
 // Service map for easy lookup
 const services = {
@@ -26,7 +26,6 @@ const services = {
   bullish: bullishService,
   gate: gateService,
   kucoin: kucoinService,
-  bitmart: bitmartService,
   okx: okxService,
   bitstamp: bitstampService,
 };
@@ -83,12 +82,7 @@ router.get('/volume/:exchange', async (req, res) => {
       const today = new Date().toISOString().split('T')[0];
       if (lastDate < today) {
         service.getAggregatedVolume().then(async live => {
-          for (const day of live.dailyVolume) {
-            await dbPool.query(
-              'INSERT INTO cex_daily_volume(snapshot_date,exchange,volume) VALUES($1,$2,$3) ON CONFLICT(snapshot_date,exchange) DO UPDATE SET volume=EXCLUDED.volume',
-              [day.date, exchangeKey, day.volume]
-            ).catch(() => {});
-          }
+          await persistExchangeVolume(dbPool, exchangeKey, live.dailyVolume).catch(() => {});
           cache.delete(cacheKey); // bust cache so next request gets fresh data
         }).catch(() => {});
       }
@@ -103,12 +97,7 @@ router.get('/volume/:exchange', async (req, res) => {
     const data = await service.getAggregatedVolume();
     setCache(cacheKey, data);
     // Persist to DB
-    for (const day of data.dailyVolume) {
-      await dbPool.query(
-        'INSERT INTO cex_daily_volume(snapshot_date,exchange,volume) VALUES($1,$2,$3) ON CONFLICT(snapshot_date,exchange) DO UPDATE SET volume=EXCLUDED.volume',
-        [day.date, exchangeKey, day.volume]
-      ).catch(() => {});
-    }
+    await persistExchangeVolume(dbPool, exchangeKey, data.dailyVolume).catch(() => {});
     res.json(data);
   } catch (err) {
     console.error(`Error fetching ${exchange} volume:`, err);
@@ -575,35 +564,9 @@ router.get('/hood/volume-history', async (req, res) => {
     );
     const dbHistory = dbRows.rows;
 
-    // Attempt live refresh from GeckoTerminal (non-blocking — failure doesn't prevent response)
-    try {
-      const cacheKey = 'hood_volume_live';
-      const cached = cache.get(cacheKey);
-      if (!cached || Date.now() - cached.timestamp > 60 * 60 * 1000) {
-        const { getVolumeHistory } = require('../services/uniswapHood');
-        const live = await getVolumeHistory(100);
-        if (live.length > 0) {
-          cache.set(cacheKey, { data: live, timestamp: Date.now() });
-          // Upsert live data into DB for persistence
-          for (const row of live) {
-            await dbPool.query(
-              `INSERT INTO hood_volume_history (snapshot_date, volume, fee_revenue)
-               VALUES ($1, $2, $3)
-               ON CONFLICT (snapshot_date) DO UPDATE SET volume=EXCLUDED.volume, fee_revenue=EXCLUDED.fee_revenue`,
-              [row.date, row.volume, row.feeRevenue ?? null]
-            );
-          }
-        }
-      }
-    } catch (liveErr) {
-      console.warn('[Hood] GeckoTerminal unavailable, serving from DB:', liveErr.message);
-    }
-
-    // Re-read from DB after potential upsert
-    const finalRows = await dbPool.query(
-      'SELECT snapshot_date::text AS date, volume::float, fee_revenue::float FROM hood_volume_history ORDER BY snapshot_date ASC'
-    );
-    res.json({ history: finalRows.rows });
+    // History is refreshed hourly by the snapshot job (throttled GeckoTerminal fetch); the
+    // request path stays DB-only so a page load never waits on or rate-limits GeckoTerminal.
+    res.json({ history: dbHistory });
   } catch (err) {
     console.error('Error fetching Hood volume history:', err.message);
     res.status(500).json({ error: err.message });

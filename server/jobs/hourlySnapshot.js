@@ -11,6 +11,7 @@ const merklService  = require('../services/merkl');
 const { fetchUsdgDepth } = require('../services/depthFetcher');
 const binanceService = require('../services/binance');
 const { getAllChainSupply } = require('../services/usdgSupply');
+const { persistExchangeVolume } = require('../services/cexVolumeStore');
 const { calculateDepthMetrics } = require('../utils/depthCalculator');
 
 async function runSnapshot() {
@@ -118,6 +119,25 @@ async function runSnapshot() {
     await client.query('COMMIT');
     console.log(`[Snapshot] ${snapshotType} snapshot #${snapshotId} complete`);
 
+    // Hood daily volume/fee history for the GDP tab. Reuses the bars already fetched above;
+    // GREATEST() so a partial fetch can never shrink a stored day.
+    try {
+      const hoodHistory = await uniswapHoodService.getVolumeHistory(100);
+      for (const row of hoodHistory) {
+        await pool.query(
+          `INSERT INTO hood_volume_history (snapshot_date, volume, fee_revenue)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (snapshot_date) DO UPDATE SET
+             volume = GREATEST(hood_volume_history.volume, EXCLUDED.volume),
+             fee_revenue = GREATEST(COALESCE(hood_volume_history.fee_revenue, 0), EXCLUDED.fee_revenue)`,
+          [row.date, row.volume, row.feeRevenue ?? 0]
+        );
+      }
+      console.log(`[Snapshot] Hood volume history upserted (${hoodHistory.length} days, complete=${hoodHistory.complete})`);
+    } catch (err) {
+      console.error('[Snapshot] Hood volume history failed:', err.message);
+    }
+
     // On daily runs, append today's PAXG supply to history
     if (isDailyRun) {
       try {
@@ -155,7 +175,7 @@ async function runSnapshot() {
       try {
         if (sharedBlockNum == null) throw new Error('no block ref');
         const aaveData = await aaveV4Service.getUsdgReserveDataAtBlock(sharedBlockNum);
-        const merklRewards = sharedMerklData?.totalDailyRewards ?? null;
+        const merklRewards = sharedMerklData?.coreDailyRewards ?? null;
         const merklHubApr  = sharedMerklData?.hubApr ?? null;
         const merklHubTvl  = sharedMerklData?.hubTvl ?? null;
         await pool.query(
@@ -276,25 +296,20 @@ async function runSnapshot() {
       }
     }
 
-    // Daily: log CEX exchange volumes to Postgres for instant serving
-    if (isDailyRun) {
-      const CEX_EXCHANGES = ['kraken','bullish','gate','kucoin','bitmart','okx','bitstamp'];
+    // Hourly: refresh CEX exchange volumes in Postgres (full returned history, so the
+    // current day fills in as it progresses and any earlier partial rows get corrected)
+    {
+      const CEX_EXCHANGES = ['kraken','bullish','gate','kucoin','okx','bitstamp'];
       for (const exName of CEX_EXCHANGES) {
         try {
           const svc = require(`../services/${exName}`);
           const result = await svc.getAggregatedVolume();
-          const today2 = new Date().toISOString().split('T')[0];
-          const todayVol = result.dailyVolume?.find(d => d.date === today2);
-          if (!todayVol) continue;
-          await pool.query(
-            'INSERT INTO cex_daily_volume(snapshot_date,exchange,volume) VALUES($1,$2,$3) ON CONFLICT(snapshot_date,exchange) DO UPDATE SET volume=EXCLUDED.volume',
-            [today2, exName, todayVol.volume]
-          );
+          await persistExchangeVolume(pool, exName, result.dailyVolume);
         } catch (err) {
           console.error(`[Snapshot] CEX volume log failed for ${exName}:`, err.message);
         }
       }
-      console.log('[Snapshot] CEX daily volumes logged to Postgres');
+      console.log('[Snapshot] CEX volumes refreshed in Postgres');
     }
 
     // Hourly depth snapshot — runs every hour for all runs (not just daily)

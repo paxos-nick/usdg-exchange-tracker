@@ -13,17 +13,15 @@ const krakenService = require('../services/kraken');
 const bullishService = require('../services/bullish');
 const gateService = require('../services/gate');
 const kucoinService = require('../services/kucoin');
-const bitmartService = require('../services/bitmart');
 const okxService = require('../services/okx');
 
-const EXCHANGES = ['kraken', 'bullish', 'gate', 'kucoin', 'bitmart', 'okx'];
+const EXCHANGES = ['kraken', 'bullish', 'gate', 'kucoin', 'okx'];
 
 const services = {
   kraken: krakenService,
   bullish: bullishService,
   gate: gateService,
   kucoin: kucoinService,
-  bitmart: bitmartService,
   okx: okxService
 };
 

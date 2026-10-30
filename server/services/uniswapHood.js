@@ -152,91 +152,118 @@ const POOLS = [
   },
 ];
 
-async function fetchOhlcvBars(poolId, limit) {
-  const { data } = await axios.get(
-    `${GECKO}/networks/${NETWORK}/pools/${poolId}/ohlcv/day`,
-    { params: { limit }, headers: { Accept: 'application/json',
-      'User-Agent': 'Mozilla/5.0 (compatible; exchange-tracker/1.0)' }, timeout: 20000 }
-  );
-  return data.data?.attributes?.ohlcv_list || []; // each bar: [timestamp, open, high, low, close, volume]
-}
+// GeckoTerminal's free tier allows ~30 calls/min and rate-limits by IP, so every call goes
+// through one serialized queue with spacing, and 429s back off and retry.
+const MIN_GAP_MS = 2200;
+let queueTail = Promise.resolve();
+let lastCallAt = 0;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function fetchOhlcvVolume(poolId, days) {
-  try {
-    const bars = await fetchOhlcvBars(poolId, days);
-    return bars.reduce((sum, bar) => sum + (bar[5] || 0), 0);
-  } catch {
-    return null;
-  }
-}
-
-// Returns daily history for all pools: [{date, volume, feeRevenue}]
-// feeRevenue = sum of (pool_volume × pool_feeRate) — accurate since fee rates differ per pool
-async function getVolumeHistory(days = 100) {
-  const byDate = {};
-  await Promise.all(POOLS.map(async pool => {
-    try {
-      const bars = await fetchOhlcvBars(pool.id, days);
-      for (const bar of bars) {
-        const date = new Date(bar[0] * 1000).toISOString().split('T')[0];
-        const vol  = bar[5] || 0;
-        if (!byDate[date]) byDate[date] = { volume: 0, feeRevenue: 0 };
-        byDate[date].volume     += vol;
-        byDate[date].feeRevenue += vol * pool.feeRate;
+function geckoGet(path, params) {
+  const run = async () => {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const wait = lastCallAt + MIN_GAP_MS - Date.now();
+      if (wait > 0) await sleep(wait);
+      lastCallAt = Date.now();
+      try {
+        const { data } = await axios.get(`${GECKO}${path}`, {
+          params, timeout: 20000,
+          headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 (compatible; exchange-tracker/1.0)' },
+        });
+        return data;
+      } catch (err) {
+        if (err.response?.status === 429 && attempt < 3) { await sleep(15000 * (attempt + 1)); continue; }
+        throw err;
       }
+    }
+  };
+  const result = queueTail.then(run, run);
+  queueTail = result.catch(() => {});
+  return result;
+}
+
+// Daily bars for every pool, newest first, shared by the pool snapshot and the volume history
+// (cached so one hourly run costs one call per pool).
+const BARS_TTL_MS = 30 * 60 * 1000;
+let barsCache = { at: 0, days: 0, byPool: null };
+
+async function fetchAllBars(days = 100) {
+  if (barsCache.byPool && barsCache.days >= days && Date.now() - barsCache.at < BARS_TTL_MS) return barsCache.byPool;
+  const byPool = {};
+  for (const pool of POOLS) {
+    try {
+      const data = await geckoGet(`/networks/${NETWORK}/pools/${pool.id}/ohlcv/day`, { limit: days });
+      const bars = (data.data?.attributes?.ohlcv_list || []).slice().sort((a, b) => b[0] - a[0]);
+      byPool[pool.id] = bars; // each bar: [timestamp, open, high, low, close, volume]
     } catch (err) {
       console.error(`[UniswapHood] OHLCV error for ${pool.name}:`, err.message);
+      byPool[pool.id] = null;
     }
-  }));
-  return Object.entries(byDate)
-    .map(([date, { volume, feeRevenue }]) => ({ date, volume, feeRevenue }))
-    .sort((a, b) => a.date.localeCompare(b.date));
+  }
+  if (Object.values(byPool).some(b => b)) barsCache = { at: Date.now(), days, byPool };
+  return byPool;
 }
 
-async function getPoolData(pool) {
-  const { data } = await axios.get(`${GECKO}/networks/${NETWORK}/pools/${pool.id}`, {
-    params:  { include: 'base_token,quote_token' },
-    headers: { Accept: 'application/json' },
-    timeout: 15000,
-  });
+// Returns daily history for all pools: [{date, volume, feeRevenue}] with `.complete` = every
+// pool fetched. feeRevenue = sum of (pool_volume × pool_feeRate) since fee rates differ per pool.
+async function getVolumeHistory(days = 100) {
+  const byPool = await fetchAllBars(days);
+  const byDate = {};
+  for (const pool of POOLS) {
+    for (const bar of (byPool[pool.id] || [])) {
+      const date = new Date(bar[0] * 1000).toISOString().split('T')[0];
+      const vol  = bar[5] || 0;
+      if (!byDate[date]) byDate[date] = { volume: 0, feeRevenue: 0 };
+      byDate[date].volume     += vol;
+      byDate[date].feeRevenue += vol * pool.feeRate;
+    }
+  }
+  const rows = Object.entries(byDate)
+    .map(([date, { volume, feeRevenue }]) => ({ date, volume, feeRevenue }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  rows.complete = POOLS.every(p => byPool[p.id]);
+  return rows;
+}
 
-  const attrs = data.data?.attributes;
-  if (!attrs) throw new Error(`No attributes returned for pool ${pool.id}`);
+async function fetchPoolMeta() {
+  const out = {};
+  for (let i = 0; i < POOLS.length; i += 30) {
+    const ids = POOLS.slice(i, i + 30).map(p => p.id).join(',');
+    try {
+      const data = await geckoGet(`/networks/${NETWORK}/pools/multi/${ids}`);
+      for (const item of (data.data || [])) out[item.id.replace(`${NETWORK}_`, '').toLowerCase()] = item.attributes;
+    } catch (err) {
+      console.error('[UniswapHood] pool metadata error:', err.message);
+    }
+  }
+  return out;
+}
 
-  // Resolve included token metadata
-  const included   = data.included || [];
-  const baseRelId  = data.data.relationships?.base_token?.data?.id;
-  const quoteRelId = data.data.relationships?.quote_token?.data?.id;
-  const baseTok    = included.find(i => i.id === baseRelId)?.attributes  || {};
-  const quoteTok   = included.find(i => i.id === quoteRelId)?.attributes || {};
-
+function buildPoolData(pool, attrs, bars) {
   const [symA, symB] = pool.name.split('/');
-  const tvlUsd = parseFloat(attrs.reserve_in_usd) || 0;
-
-  // Use OHLCV for all volume windows — pool endpoint's volume_usd.h24 returns 0 inconsistently
-  const [vol24h, vol7d, vol30d] = await Promise.all([
-    fetchOhlcvVolume(pool.id, 1),   // single bar = yesterday's full calendar-day volume
-    fetchOhlcvVolume(pool.id, 7),
-    fetchOhlcvVolume(pool.id, 30),
-  ]);
-  const fees24h = (vol24h || 0) * pool.feeRate;
+  const tvlUsd = parseFloat(attrs?.reserve_in_usd) || 0;
+  const sum = n => (bars || []).slice(0, n).reduce((t, b) => t + (b[5] || 0), 0);
+  // bars are newest-first: 1 bar = latest calendar day, 7/30 = trailing windows
+  const vol24h = bars ? sum(1) : 0;
+  const vol7d  = bars ? sum(7) : null;
+  const vol30d = bars ? sum(30) : null;
+  const fees24h = vol24h * pool.feeRate;
   const fees7d  = vol7d  != null ? vol7d  * pool.feeRate : null;
   const fees30d = vol30d != null ? vol30d * pool.feeRate : null;
-
   return {
     address:     pool.id,
     name:        pool.name,
     type:        pool.type,
     chain:       'robinhood',
     venue:       pool.venue,
-    tokenA:      { symbol: baseTok.symbol  || symA, balance: tvlUsd / 2, address: baseTok.address  || '' },
-    tokenB:      { symbol: quoteTok.symbol || symB, balance: tvlUsd / 2, address: quoteTok.address || '' },
-    price:       parseFloat(attrs.base_token_price_usd) || 0,
+    tokenA:      { symbol: symA, balance: tvlUsd / 2, address: '' },
+    tokenB:      { symbol: symB, balance: tvlUsd / 2, address: '' },
+    price:       parseFloat(attrs?.base_token_price_usd) || 0,
     tvlUsd,
     usdgBalance: tvlUsd / 2,
     feeRate:     pool.feeRate,
     stats: {
-      '24h': { volume: vol24h ?? 0, fees: fees24h, yieldOverTvl: tvlUsd > 0 ? fees24h / tvlUsd : 0 },
+      '24h': { volume: vol24h, fees: fees24h, yieldOverTvl: tvlUsd > 0 ? fees24h / tvlUsd : 0 },
       '7d':  { volume: vol7d,  fees: fees7d,  yieldOverTvl: tvlUsd > 0 && fees7d  != null ? fees7d  / tvlUsd : null },
       '30d': { volume: vol30d, fees: fees30d, yieldOverTvl: tvlUsd > 0 && fees30d != null ? fees30d / tvlUsd : null },
     },
@@ -244,16 +271,21 @@ async function getPoolData(pool) {
   };
 }
 
+// All pools in one pass: 1 metadata call + 1 bars call per pool, throttled. A pool whose
+// metadata or bars are missing is skipped rather than recorded as $0 TVL / $0 volume.
 async function getAllPools() {
+  const [meta, byPool] = await Promise.all([fetchPoolMeta(), fetchAllBars(100)]);
   const results = [];
   for (const pool of POOLS) {
-    try {
-      results.push(await getPoolData(pool));
-    } catch (err) {
-      console.error(`[UniswapHood] Error fetching ${pool.name}:`, err.message);
+    const attrs = meta[pool.id.toLowerCase()];
+    const bars  = byPool[pool.id];
+    if (!attrs || !bars) {
+      console.error(`[UniswapHood] Skipping ${pool.name}: ${!attrs ? 'no metadata' : 'no OHLCV bars'}`);
+      continue;
     }
+    results.push(buildPoolData(pool, attrs, bars));
   }
   return results;
 }
 
-module.exports = { POOLS, getPoolData, getAllPools, getVolumeHistory };
+module.exports = { POOLS, getAllPools, getVolumeHistory };

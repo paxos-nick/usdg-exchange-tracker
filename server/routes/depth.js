@@ -4,7 +4,7 @@ const { fetchUsdgDepth, EXCHANGE_NAMES } = require('../services/depthFetcher');
 
 const router = express.Router();
 
-const EXCHANGES = ['kraken', 'gate', 'kucoin', 'bitmart', 'okx'];
+const EXCHANGES = ['kraken', 'gate', 'kucoin', 'okx'];
 
 // Per-exchange health tracking
 const exchangeHealth = {};

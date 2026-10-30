@@ -46,7 +46,6 @@ const EXCHANGE_NAMES = {
   bullish: 'Bullish',
   gate: 'Gate.io',
   kucoin: 'Kucoin',
-  bitmart: 'Bitmart',
   okx: 'OKX'
 };
 

@@ -13,14 +13,13 @@ const krakenService = require('../services/kraken');
 const bullishService = require('../services/bullish');
 const gateService = require('../services/gate');
 const kucoinService = require('../services/kucoin');
-const bitmartService = require('../services/bitmart');
 const okxService = require('../services/okx');
 
 // Import metrics calculator
 const { calculateAllMetrics } = require('../utils/metricsCalculator');
 
 // All supported exchanges
-const EXCHANGES = ['kraken', 'bullish', 'gate', 'kucoin', 'bitmart', 'okx'];
+const EXCHANGES = ['kraken', 'bullish', 'gate', 'kucoin', 'okx'];
 
 // Service map
 const services = {
@@ -28,7 +27,6 @@ const services = {
   bullish: bullishService,
   gate: gateService,
   kucoin: kucoinService,
-  bitmart: bitmartService,
   okx: okxService
 };
 

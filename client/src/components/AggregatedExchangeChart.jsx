@@ -19,7 +19,6 @@ const EXCHANGE_COLORS = {
   bullish: '#00d4aa',
   gate: '#f59e0b',
   kucoin: '#3b82f6',
-  bitmart: '#ec4899',
   okx: '#10b981',
   bitstamp: '#e84142'
 };
@@ -29,7 +28,6 @@ const EXCHANGE_NAMES = {
   bullish: 'Bullish',
   gate: 'Gate.io',
   kucoin: 'Kucoin',
-  bitmart: 'Bitmart',
   okx: 'OKX',
   bitstamp: 'Bitstamp'
 };
